@@ -14,9 +14,7 @@ import { spawn } from 'node:child_process';
 import { AcpClient } from '../src/acp-client.js';
 
 function sendMessage(stdout: PassThrough, json: string): void {
-  const body = Buffer.from(json);
-  stdout.push(`Content-Length: ${body.length}\r\n\r\n`);
-  stdout.push(body);
+  stdout.push(`${json}\n`);
 }
 
 function createMockProcess() {
@@ -159,15 +157,14 @@ describe('AcpClient', () => {
     await expect(waitP).rejects.toThrow('ACP turn timed out');
   });
 
-  it('ignores invalid Content-Length messages', async () => {
+  it('ignores non-JSON lines', async () => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start();
 
-    // Push garbage without Content-Length header
-    stdout.push('not a valid message\r\n\r\n');
+    stdout.push('not json at all\n');
 
     const initP = client.initialize();
     sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');

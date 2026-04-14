@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 import * as core from '@actions/core';
 import type { ReviewResult, ToolCallRecord } from './types.js';
 
@@ -58,7 +59,8 @@ export class AcpClient {
     if (!stdout) {
       throw new Error('ACP process stdout is not available');
     }
-    this.readMessages(stdout);
+    const rl = createInterface({ input: stdout });
+    rl.on('line', (line) => this.handleLine(line));
   }
 
   async initialize(): Promise<void> {
@@ -143,41 +145,8 @@ export class AcpClient {
       this.pending.set(id, { resolve, reject });
       const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
       const body = JSON.stringify(msg);
-      const header = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
       if (this.debug) core.info(`ACP → ${body}`);
-      this.proc.stdin.write(header + body);
-    });
-  }
-
-  private readMessages(stream: NodeJS.ReadableStream): void {
-    let buffer = Buffer.alloc(0);
-    let contentLength = -1;
-
-    stream.on('data', (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
-
-      while (true) {
-        if (contentLength === -1) {
-          const headerEnd = buffer.indexOf('\r\n\r\n');
-          if (headerEnd === -1) break;
-          const header = buffer.subarray(0, headerEnd).toString();
-          const match = header.match(/Content-Length:\s*(\d+)/i);
-          if (!match) {
-            buffer = buffer.subarray(headerEnd + 4);
-            continue;
-          }
-          contentLength = Number.parseInt(match[1] ?? '0', 10);
-          buffer = buffer.subarray(headerEnd + 4);
-        }
-
-        if (buffer.length < contentLength) break;
-
-        const body = buffer.subarray(0, contentLength).toString();
-        buffer = buffer.subarray(contentLength);
-        contentLength = -1;
-
-        this.handleLine(body);
-      }
+      this.proc.stdin.write(`${body}\n`);
     });
   }
 
