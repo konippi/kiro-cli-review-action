@@ -10,26 +10,34 @@ import type { EventContext } from './types.js';
 async function run(): Promise<void> {
   const inputs = parseInputs();
   core.setSecret(inputs.kiroApiKey);
-  core.setSecret(inputs.githubToken);
+  if (inputs.githubToken) core.setSecret(inputs.githubToken);
 
   const event = parseEventContext();
-  core.info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
 
-  if (event.isFork) {
-    core.warning('Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
-    core.setOutput('review_result', 'skip');
-    core.setOutput('exit_code', '0');
-    return;
+  // Determine mode
+  if (!inputs.prompt && !event) {
+    throw new Error('Either "prompt" input or a pull_request event is required');
   }
 
-  restoreConfigFromBase(event.baseBranch);
+  if (event) {
+    core.info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
+    if (event.isFork) {
+      core.warning('Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
+      core.setOutput('review_result', 'skip');
+      core.setOutput('exit_code', '0');
+      return;
+    }
+    restoreConfigFromBase(event.baseBranch);
+  }
 
+  // Install binaries
   const installDir = join(process.env.RUNNER_TEMP || '/tmp', 'kiro-review');
   const [kiroBinary, mcpBinary] = await Promise.all([
     installKiroCli(),
     installGithubMcpServer(inputs.githubMcpVersion, installDir),
   ]);
 
+  // ACP session
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
   core.saveState('acp_pid', '');
 
@@ -42,7 +50,7 @@ async function run(): Promise<void> {
     await acp.initialize();
     const actionPath = process.env.GITHUB_ACTION_PATH || '.';
 
-    // Copy bundled agent to .kiro/agents/ so kiro-cli can resolve by name.
+    // Copy bundled agent if needed
     const agentName = inputs.agent || 'code-reviewer';
     if (!inputs.agent) {
       const agentDir = join('.kiro', 'agents');
@@ -56,13 +64,14 @@ async function run(): Promise<void> {
     const sessionId = await acp.createSession(agentName, mcpBinary, inputs.githubToken);
     core.info(`ACP session created: ${sessionId}`);
 
-    const prompt = buildPrompt(event, actionPath, inputs.maxDiffSize);
+    // Build prompt based on mode
+    const prompt = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
     await acp.prompt(sessionId, prompt);
 
     const timeoutMs = inputs.timeoutMinutes * 60_000;
     const result = await acp.waitForTurnEnd(timeoutMs, sessionId);
 
-    core.info(`Review complete. Tool calls: ${result.toolCalls.length}`);
+    core.info(`Complete. Tool calls: ${result.toolCalls.length}`);
     core.setOutput('review_result', result.success ? 'pass' : 'fail');
     core.setOutput('exit_code', '0');
   } catch (error) {
@@ -75,7 +84,13 @@ async function run(): Promise<void> {
   }
 }
 
-function buildPrompt(event: EventContext, actionPath: string, maxDiffSize: number): string {
+function buildReviewPrompt(
+  event: EventContext | null,
+  actionPath: string,
+  maxDiffSize: number,
+): string {
+  if (!event) throw new Error('PR context is required for review mode');
+
   let systemPrompt = '';
   try {
     systemPrompt = readFileSync(join(actionPath, 'prompts', 'review.md'), 'utf-8');

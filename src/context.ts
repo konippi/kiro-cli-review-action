@@ -8,6 +8,7 @@ export function parseInputs(): ActionInputs {
     kiroApiKey: core.getInput('kiro_api_key', { required: true }),
     githubToken: core.getInput('github_token') || process.env.GITHUB_TOKEN || '',
     agent: core.getInput('agent'),
+    prompt: core.getInput('prompt'),
     maxDiffSize: Number.parseInt(core.getInput('max_diff_size') || '10000', 10),
     timeoutMinutes: Number.parseInt(core.getInput('timeout_minutes') || '5', 10),
     debug: core.getInput('debug') === 'true',
@@ -15,12 +16,11 @@ export function parseInputs(): ActionInputs {
   };
 }
 
-export function parseEventContext(): EventContext {
+/** Returns null when not in a pull_request event (e.g. workflow_dispatch with prompt). */
+export function parseEventContext(): EventContext | null {
   const { context } = github;
   const pr = context.payload.pull_request;
-  if (!pr) {
-    throw new Error('This action only supports pull_request events');
-  }
+  if (!pr) return null;
 
   return {
     eventName: context.eventName,

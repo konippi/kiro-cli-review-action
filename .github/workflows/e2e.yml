@@ -2,13 +2,18 @@ name: E2E Test
 
 on:
   workflow_dispatch:
+    inputs:
+      test_prompt:
+        description: 'Test prompt for kiro-cli'
+        required: false
+        default: 'List the files in the current directory starting with "package"'
 
 permissions:
   contents: read
 
 jobs:
-  smoke-test:
-    name: Smoke Test
+  test-prompt-mode:
+    name: Test Prompt Mode
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -16,28 +21,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install kiro-cli
-        run: |
-          curl -fsSL https://cli.kiro.dev/install | bash -s -- --force
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Test with prompt
+        id: test
+        uses: ./
+        with:
+          kiro_api_key: ${{ secrets.KIRO_API_KEY }}
+          prompt: ${{ inputs.test_prompt }}
+          debug: 'true'
 
-      - name: Verify kiro-cli
-        run: kiro-cli --version
-
-      - name: Install github-mcp-server
+      - name: Verify outputs
         run: |
-          curl -L "https://github.com/github/github-mcp-server/releases/download/v0.32.0/github-mcp-server_Linux_x86_64.tar.gz" | tar xz
-          chmod +x github-mcp-server
-          ./github-mcp-server --help || true
+          RESULT="${{ steps.test.outputs.review_result }}"
+          EXIT_CODE="${{ steps.test.outputs.exit_code }}"
 
-      - name: Test ACP connection
-        env:
-          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
-        run: |
-          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | timeout 30 kiro-cli acp || EXIT_CODE=$?
-          if [ "${EXIT_CODE:-0}" -le 1 ]; then
-            echo "✅ ACP process started and responded"
+          echo "review_result: $RESULT"
+          echo "exit_code: $EXIT_CODE"
+
+          if [ "$RESULT" = "pass" ]; then
+            echo "✅ Action completed successfully"
+          elif [ "$RESULT" = "fail" ]; then
+            echo "❌ Action failed"
+            exit 1
           else
-            echo "❌ ACP process failed with code $EXIT_CODE"
+            echo "❌ Unexpected result: $RESULT"
             exit 1
           fi

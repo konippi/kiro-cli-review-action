@@ -14,6 +14,9 @@ inputs:
   agent:
     description: 'Custom agent JSON path (defaults to bundled code-reviewer)'
     required: false
+  prompt:
+    description: 'Direct prompt to execute. When provided, runs in prompt mode without requiring a PR context.'
+    required: false
   max_diff_size:
     description: 'Maximum diff size in characters'
     default: '10000'

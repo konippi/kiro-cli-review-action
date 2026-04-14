@@ -40806,6 +40806,7 @@ function parseInputs() {
     kiroApiKey: getInput("kiro_api_key", { required: true }),
     githubToken: getInput("github_token") || process.env.GITHUB_TOKEN || "",
     agent: getInput("agent"),
+    prompt: getInput("prompt"),
     maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
     timeoutMinutes: Number.parseInt(getInput("timeout_minutes") || "5", 10),
     debug: getInput("debug") === "true",
@@ -40815,9 +40816,7 @@ function parseInputs() {
 function parseEventContext() {
   const { context } = github;
   const pr = context.payload.pull_request;
-  if (!pr) {
-    throw new Error("This action only supports pull_request events");
-  }
+  if (!pr) return null;
   return {
     eventName: context.eventName,
     owner: context.repo.owner,
@@ -40925,16 +40924,21 @@ async function installKiroCli() {
 async function run() {
   const inputs = parseInputs();
   setSecret(inputs.kiroApiKey);
-  setSecret(inputs.githubToken);
+  if (inputs.githubToken) setSecret(inputs.githubToken);
   const event = parseEventContext();
-  info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
-  if (event.isFork) {
-    warning("Fork PR detected \u2014 KIRO_API_KEY is unavailable. Skipping review.");
-    setOutput("review_result", "skip");
-    setOutput("exit_code", "0");
-    return;
+  if (!inputs.prompt && !event) {
+    throw new Error('Either "prompt" input or a pull_request event is required');
   }
-  restoreConfigFromBase(event.baseBranch);
+  if (event) {
+    info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
+    if (event.isFork) {
+      warning("Fork PR detected \u2014 KIRO_API_KEY is unavailable. Skipping review.");
+      setOutput("review_result", "skip");
+      setOutput("exit_code", "0");
+      return;
+    }
+    restoreConfigFromBase(event.baseBranch);
+  }
   const installDir = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", "kiro-review");
   const [kiroBinary, mcpBinary] = await Promise.all([
     installKiroCli(),
@@ -40960,11 +40964,11 @@ async function run() {
     }
     const sessionId = await acp.createSession(agentName, mcpBinary, inputs.githubToken);
     info(`ACP session created: ${sessionId}`);
-    const prompt = buildPrompt(event, actionPath, inputs.maxDiffSize);
+    const prompt = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
     await acp.prompt(sessionId, prompt);
     const timeoutMs = inputs.timeoutMinutes * 6e4;
     const result = await acp.waitForTurnEnd(timeoutMs, sessionId);
-    info(`Review complete. Tool calls: ${result.toolCalls.length}`);
+    info(`Complete. Tool calls: ${result.toolCalls.length}`);
     setOutput("review_result", result.success ? "pass" : "fail");
     setOutput("exit_code", "0");
   } catch (error2) {
@@ -40976,7 +40980,8 @@ async function run() {
     acp.kill();
   }
 }
-function buildPrompt(event, actionPath, maxDiffSize) {
+function buildReviewPrompt(event, actionPath, maxDiffSize) {
+  if (!event) throw new Error("PR context is required for review mode");
   let systemPrompt = "";
   try {
     systemPrompt = (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(actionPath, "prompts", "review.md"), "utf-8");

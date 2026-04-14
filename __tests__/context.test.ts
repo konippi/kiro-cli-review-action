@@ -69,19 +69,20 @@ describe('parseInputs', () => {
 describe('parseEventContext', () => {
   it('parses pull_request event', () => {
     const event = parseEventContext();
-    expect(event.eventName).toBe('pull_request');
-    expect(event.owner).toBe('test-owner');
-    expect(event.repo).toBe('test-repo');
-    expect(event.prNumber).toBe(42);
-    expect(event.baseBranch).toBe('main');
-    expect(event.isFork).toBe(false);
+    expect(event).not.toBeNull();
+    expect(event?.eventName).toBe('pull_request');
+    expect(event?.owner).toBe('test-owner');
+    expect(event?.repo).toBe('test-repo');
+    expect(event?.prNumber).toBe(42);
+    expect(event?.baseBranch).toBe('main');
+    expect(event?.isFork).toBe(false);
   });
 
-  it('throws when not a pull_request event', async () => {
+  it('returns null when not a pull_request event', async () => {
     const github = await import('@actions/github');
     (github.context.payload as Record<string, unknown>).pull_request = undefined;
     try {
-      expect(() => parseEventContext()).toThrow('only supports pull_request events');
+      expect(parseEventContext()).toBeNull();
     } finally {
       (github.context.payload as Record<string, unknown>).pull_request = {
         number: 42,
