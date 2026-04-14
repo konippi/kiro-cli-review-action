@@ -40672,7 +40672,7 @@ var AcpClient = class {
   }
   async initialize() {
     await this.send("initialize", {
-      protocolVersion: "2025-01-01",
+      protocolVersion: 1,
       clientInfo: {
         name: "kiro-cli-review-action",
         version: "0.1.0"
@@ -40698,8 +40698,8 @@ var AcpClient = class {
     this.toolCalls = [];
     this.turnEnded = false;
     await this.send("session/prompt", {
-      session_id: sessionId,
-      message: { role: "user", content: [{ type: "text", text }] }
+      sessionId,
+      prompt: [{ type: "text", text }]
     });
   }
   async waitForTurnEnd(timeoutMs, sessionId) {
@@ -40723,7 +40723,7 @@ var AcpClient = class {
   }
   async cancel(sessionId) {
     try {
-      await this.send("session/cancel", { session_id: sessionId });
+      await this.send("session/cancel", { sessionId });
     } catch {
     }
   }

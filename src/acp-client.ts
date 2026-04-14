@@ -68,7 +68,7 @@ export class AcpClient {
 
   async initialize(): Promise<void> {
     await this.send('initialize', {
-      protocolVersion: '2025-01-01',
+      protocolVersion: 1,
       clientInfo: {
         name: 'kiro-cli-review-action',
         version: '0.1.0',
@@ -96,8 +96,8 @@ export class AcpClient {
     this.toolCalls = [];
     this.turnEnded = false;
     await this.send('session/prompt', {
-      session_id: sessionId,
-      message: { role: 'user', content: [{ type: 'text', text }] },
+      sessionId,
+      prompt: [{ type: 'text', text }],
     });
   }
 
@@ -123,7 +123,7 @@ export class AcpClient {
 
   async cancel(sessionId: string): Promise<void> {
     try {
-      await this.send('session/cancel', { session_id: sessionId });
+      await this.send('session/cancel', { sessionId });
     } catch {
       // Best effort
     }
