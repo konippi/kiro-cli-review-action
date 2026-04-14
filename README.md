@@ -36,7 +36,7 @@ jobs:
 | `agent` | No | bundled `code-reviewer` | Custom agent JSON path |
 | `max_diff_size` | No | `10000` | Maximum diff size in characters |
 | `timeout_minutes` | No | `5` | Execution timeout |
-| `debug` | No | `false` | Show full output (⚠️ may expose secrets) |
+| `debug` | No | `false` | Show full ACP messages in logs. Only enable in non-sensitive environments |
 
 ## Outputs
 

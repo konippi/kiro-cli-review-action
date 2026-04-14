@@ -21,7 +21,7 @@ inputs:
     description: 'kiro-cli execution timeout in minutes'
     default: '5'
   debug:
-    description: 'Show full kiro-cli output (WARNING: may expose secrets in logs)'
+    description: 'Show full ACP JSON-RPC messages in logs. WARNING: may include tool execution results containing sensitive data. Only enable for debugging in non-sensitive environments.'
     default: 'false'
   github_mcp_version:
     description: 'github-mcp-server version to install'
