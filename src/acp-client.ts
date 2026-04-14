@@ -79,15 +79,16 @@ export class AcpClient {
   async createSession(mcpServerBinary: string, githubToken: string): Promise<string> {
     const result = (await this.send('session/new', {
       cwd: process.cwd(),
-      mcpServers: {
-        github: {
+      mcpServers: [
+        {
+          name: 'github',
           command: mcpServerBinary,
           args: ['stdio', '--toolsets', 'pull_requests'],
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken },
+          env: [{ name: 'GITHUB_PERSONAL_ACCESS_TOKEN', value: githubToken }],
         },
-      },
-    })) as { session_id: string };
-    return result.session_id;
+      ],
+    })) as { sessionId: string };
+    return result.sessionId;
   }
 
   async prompt(sessionId: string, text: string): Promise<void> {

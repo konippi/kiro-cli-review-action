@@ -40682,15 +40682,16 @@ var AcpClient = class {
   async createSession(mcpServerBinary, githubToken) {
     const result = await this.send("session/new", {
       cwd: process.cwd(),
-      mcpServers: {
-        github: {
+      mcpServers: [
+        {
+          name: "github",
           command: mcpServerBinary,
           args: ["stdio", "--toolsets", "pull_requests"],
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: githubToken }
+          env: [{ name: "GITHUB_PERSONAL_ACCESS_TOKEN", value: githubToken }]
         }
-      }
+      ]
     });
-    return result.session_id;
+    return result.sessionId;
   }
   async prompt(sessionId, text) {
     this.reviewText = "";
