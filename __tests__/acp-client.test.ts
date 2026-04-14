@@ -89,7 +89,7 @@ describe('AcpClient', () => {
     sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
     await initPromise;
 
-    const sessionPromise = client.createSession('agent', '/bin/mcp', 'token');
+    const sessionPromise = client.createSession('/bin/mcp', 'token');
     sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"session_id":"sess-1"}}');
     const sessionId = await sessionPromise;
     expect(sessionId).toBe('sess-1');
@@ -143,7 +143,7 @@ describe('AcpClient', () => {
     const initP = client.initialize();
     sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
     await initP;
-    const sessP = client.createSession('a', '/b', 't');
+    const sessP = client.createSession('/b', 't');
     sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"session_id":"s1"}}');
     await sessP;
     const promptP = client.prompt('s1', 'hi');

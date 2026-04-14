@@ -42,8 +42,11 @@ export class AcpClient {
     return this.proc;
   }
 
-  async start(): Promise<void> {
-    this.proc = spawn(this.kiroBinary, ['acp'], {
+  async start(agent?: string): Promise<void> {
+    const args = ['acp'];
+    if (agent) args.push('--agent', agent);
+
+    this.proc = spawn(this.kiroBinary, args, {
       stdio: ['pipe', 'pipe', this.debug ? 'inherit' : 'pipe'],
       env: { ...process.env, KIRO_API_KEY: this.kiroApiKey },
     });
@@ -73,13 +76,9 @@ export class AcpClient {
     });
   }
 
-  async createSession(
-    agent: string,
-    mcpServerBinary: string,
-    githubToken: string,
-  ): Promise<string> {
+  async createSession(mcpServerBinary: string, githubToken: string): Promise<string> {
     const result = (await this.send('session/new', {
-      agent,
+      cwd: process.cwd(),
       mcpServers: {
         github: {
           command: mcpServerBinary,

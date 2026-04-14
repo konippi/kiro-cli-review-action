@@ -40651,8 +40651,10 @@ var AcpClient = class {
   get process() {
     return this.proc;
   }
-  async start() {
-    this.proc = (0, import_node_child_process.spawn)(this.kiroBinary, ["acp"], {
+  async start(agent) {
+    const args = ["acp"];
+    if (agent) args.push("--agent", agent);
+    this.proc = (0, import_node_child_process.spawn)(this.kiroBinary, args, {
       stdio: ["pipe", "pipe", this.debug ? "inherit" : "pipe"],
       env: { ...process.env, KIRO_API_KEY: this.kiroApiKey }
     });
@@ -40677,9 +40679,9 @@ var AcpClient = class {
       }
     });
   }
-  async createSession(agent, mcpServerBinary, githubToken) {
+  async createSession(mcpServerBinary, githubToken) {
     const result = await this.send("session/new", {
-      agent,
+      cwd: process.cwd(),
       mcpServers: {
         github: {
           command: mcpServerBinary,
@@ -40950,25 +40952,25 @@ async function run() {
     installKiroCli(),
     installGithubMcpServer(inputs.githubMcpVersion, installDir)
   ]);
+  const actionPath = process.env.GITHUB_ACTION_PATH || ".";
+  const agentName = inputs.agent || "code-reviewer";
+  if (!inputs.agent) {
+    const agentDir = (0, import_node_path2.join)(".kiro", "agents");
+    const dest = (0, import_node_path2.join)(agentDir, "code-reviewer.json");
+    if (!(0, import_node_fs3.existsSync)(dest)) {
+      (0, import_node_fs3.mkdirSync)(agentDir, { recursive: true });
+      (0, import_node_fs3.copyFileSync)((0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json"), dest);
+    }
+  }
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
   saveState("acp_pid", "");
   try {
-    await acp.start();
+    await acp.start(agentName);
     if (acp.process?.pid) {
       saveState("acp_pid", String(acp.process.pid));
     }
     await acp.initialize();
-    const actionPath = process.env.GITHUB_ACTION_PATH || ".";
-    const agentName = inputs.agent || "code-reviewer";
-    if (!inputs.agent) {
-      const agentDir = (0, import_node_path2.join)(".kiro", "agents");
-      const dest = (0, import_node_path2.join)(agentDir, "code-reviewer.json");
-      if (!(0, import_node_fs3.existsSync)(dest)) {
-        (0, import_node_fs3.mkdirSync)(agentDir, { recursive: true });
-        (0, import_node_fs3.copyFileSync)((0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json"), dest);
-      }
-    }
-    const sessionId = await acp.createSession(agentName, mcpBinary, inputs.githubToken);
+    const sessionId = await acp.createSession(mcpBinary, inputs.githubToken);
     info(`ACP session created: ${sessionId}`);
     const prompt = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
     await acp.prompt(sessionId, prompt);

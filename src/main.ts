@@ -38,30 +38,29 @@ async function run(): Promise<void> {
   ]);
 
   // ACP session
+  const actionPath = process.env.GITHUB_ACTION_PATH || '.';
+  const agentName = inputs.agent || 'code-reviewer';
+  if (!inputs.agent) {
+    const agentDir = join('.kiro', 'agents');
+    const dest = join(agentDir, 'code-reviewer.json');
+    if (!existsSync(dest)) {
+      mkdirSync(agentDir, { recursive: true });
+      copyFileSync(join(actionPath, 'agents', 'code-reviewer.json'), dest);
+    }
+  }
+
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
   core.saveState('acp_pid', '');
 
   try {
-    await acp.start();
+    await acp.start(agentName);
     if (acp.process?.pid) {
       core.saveState('acp_pid', String(acp.process.pid));
     }
 
     await acp.initialize();
-    const actionPath = process.env.GITHUB_ACTION_PATH || '.';
 
-    // Copy bundled agent if needed
-    const agentName = inputs.agent || 'code-reviewer';
-    if (!inputs.agent) {
-      const agentDir = join('.kiro', 'agents');
-      const dest = join(agentDir, 'code-reviewer.json');
-      if (!existsSync(dest)) {
-        mkdirSync(agentDir, { recursive: true });
-        copyFileSync(join(actionPath, 'agents', 'code-reviewer.json'), dest);
-      }
-    }
-
-    const sessionId = await acp.createSession(agentName, mcpBinary, inputs.githubToken);
+    const sessionId = await acp.createSession(mcpBinary, inputs.githubToken);
     core.info(`ACP session created: ${sessionId}`);
 
     // Build prompt based on mode
