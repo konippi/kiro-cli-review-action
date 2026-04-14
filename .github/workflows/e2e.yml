@@ -26,6 +26,7 @@ jobs:
         uses: ./
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
+          github_token: ${{ github.token }}
           prompt: ${{ inputs.test_prompt }}
           debug: 'true'
 
