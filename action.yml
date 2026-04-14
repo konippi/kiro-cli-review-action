@@ -20,9 +20,6 @@ inputs:
   max_diff_size:
     description: 'Maximum diff size in characters'
     default: '10000'
-  timeout_minutes:
-    description: 'kiro-cli execution timeout in minutes'
-    default: '5'
   debug:
     description: 'Show full ACP JSON-RPC messages in logs. WARNING: may include tool execution results containing sensitive data. Only enable for debugging in non-sensitive environments.'
     default: 'false'

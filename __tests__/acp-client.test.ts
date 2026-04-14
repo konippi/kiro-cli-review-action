@@ -47,6 +47,20 @@ describe('AcpClient', () => {
     });
   });
 
+  it('passes --agent flag when agent is specified', async () => {
+    const { proc } = createMockProcess();
+    proc.on.mockImplementation(() => proc);
+
+    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+    await client.start('my-agent');
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/usr/bin/kiro-cli',
+      ['acp', '--agent', 'my-agent'],
+      expect.any(Object),
+    );
+  });
+
   it('rejects send when process stdin is not writable', async () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await expect(client.initialize()).rejects.toThrow('ACP process not available');
@@ -78,47 +92,34 @@ describe('AcpClient', () => {
     await expect(promise).rejects.toThrow('ACP error -1: fail');
   });
 
-  it('accumulates review text from AgentMessageChunk', async () => {
+  it('accumulates review text and returns result from prompt', async () => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start();
 
-    const initPromise = client.initialize();
+    const initP = client.initialize();
     sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
-    await initPromise;
+    await initP;
 
-    const sessionPromise = client.createSession('/bin/mcp', 'token');
+    const sessP = client.createSession('/bin/mcp', 'token');
     sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess-1"}}');
-    const sessionId = await sessionPromise;
+    const sessionId = await sessP;
     expect(sessionId).toBe('sess-1');
 
-    const promptPromise = client.prompt(sessionId, 'review this');
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{}}');
-    await promptPromise;
+    const promptP = client.prompt(sessionId, 'review this');
 
+    // Notifications arrive before prompt response
     sendMessage(
       stdout,
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"looks "}}}',
+      '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"looks good"}}}}',
     );
-    sendMessage(
-      stdout,
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"ToolCall","data":{"name":"fs_read","status":"success"}}}',
-    );
-    sendMessage(
-      stdout,
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"good"}}}',
-    );
-    sendMessage(
-      stdout,
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"TurnEnd","data":{}}}',
-    );
+    // Prompt response signals turn end
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}');
 
-    const result = await client.waitForTurnEnd(5000, sessionId);
+    const result = await promptP;
     expect(result.reviewText).toBe('looks good');
-    expect(result.toolCalls).toHaveLength(1);
-    expect(result.toolCalls[0]?.name).toBe('fs_read');
     expect(result.success).toBe(true);
   });
 
@@ -131,30 +132,6 @@ describe('AcpClient', () => {
     client.kill();
 
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
-  });
-
-  it('calls cancel on timeout then rejects', async () => {
-    const { proc, stdout } = createMockProcess();
-    proc.on.mockImplementation(() => proc);
-
-    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
-    await client.start();
-
-    const initP = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
-    await initP;
-    const sessP = client.createSession('/b', 't');
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s1"}}');
-    await sessP;
-    const promptP = client.prompt('s1', 'hi');
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{}}');
-    await promptP;
-
-    const waitP = client.waitForTurnEnd(1, 's1');
-    setTimeout(() => {
-      sendMessage(stdout, '{"jsonrpc":"2.0","id":4,"result":{}}');
-    }, 10);
-    await expect(waitP).rejects.toThrow('ACP turn timed out');
   });
 
   it('ignores non-JSON lines', async () => {

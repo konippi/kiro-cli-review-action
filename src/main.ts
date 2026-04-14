@@ -50,7 +50,6 @@ async function run(): Promise<void> {
   }
 
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
-  core.saveState('acp_pid', '');
 
   try {
     await acp.start(agentName);
@@ -64,11 +63,8 @@ async function run(): Promise<void> {
     core.info(`ACP session created: ${sessionId}`);
 
     // Build prompt based on mode
-    const prompt = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
-    await acp.prompt(sessionId, prompt);
-
-    const timeoutMs = inputs.timeoutMinutes * 60_000;
-    const result = await acp.waitForTurnEnd(timeoutMs, sessionId);
+    const promptText = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
+    const result = await acp.prompt(sessionId, promptText);
 
     core.info(`Complete. Tool calls: ${result.toolCalls.length}`);
     core.setOutput('review_result', result.success ? 'pass' : 'fail');

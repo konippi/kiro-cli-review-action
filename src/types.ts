@@ -5,7 +5,6 @@ export interface ActionInputs {
   readonly agent: string;
   readonly prompt: string;
   readonly maxDiffSize: number;
-  readonly timeoutMinutes: number;
   readonly debug: boolean;
   readonly githubMcpVersion: string;
 }
@@ -24,11 +23,5 @@ export interface EventContext {
 export interface ReviewResult {
   readonly success: boolean;
   readonly reviewText: string;
-  readonly toolCalls: readonly ToolCallRecord[];
-}
-
-/** Record of a tool call observed via ACP. */
-export interface ToolCallRecord {
-  readonly name: string;
-  readonly status: string;
+  readonly toolCalls: readonly string[];
 }

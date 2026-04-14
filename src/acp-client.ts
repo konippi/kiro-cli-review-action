@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import * as core from '@actions/core';
-import type { ReviewResult, ToolCallRecord } from './types.js';
+import type { ReviewResult } from './types.js';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -28,9 +28,7 @@ export class AcpClient {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private reviewText = '';
-  private toolCalls: ToolCallRecord[] = [];
-  private turnEnded = false;
-  private turnEndResolve: (() => void) | null = null;
+  private toolCalls: string[] = [];
 
   constructor(
     private readonly kiroBinary: string,
@@ -54,8 +52,6 @@ export class AcpClient {
     this.proc.on('error', (err) => core.error(`ACP process error: ${err.message}`));
     this.proc.on('exit', (code) => {
       if (this.debug) core.info(`ACP process exited with code ${code}`);
-      // Resolve pending turn if process exits
-      this.turnEndResolve?.();
     });
 
     const stdout = this.proc.stdout;
@@ -91,42 +87,14 @@ export class AcpClient {
     return result.sessionId;
   }
 
-  async prompt(sessionId: string, text: string): Promise<void> {
+  async prompt(sessionId: string, text: string): Promise<ReviewResult> {
     this.reviewText = '';
     this.toolCalls = [];
-    this.turnEnded = false;
     await this.send('session/prompt', {
       sessionId,
       prompt: [{ type: 'text', text }],
     });
-  }
-
-  async waitForTurnEnd(timeoutMs: number, sessionId: string): Promise<ReviewResult> {
-    if (!this.turnEnded) {
-      try {
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            this.turnEndResolve = resolve;
-          }),
-          new Promise<void>((_, reject) => {
-            const timer = setTimeout(() => reject(new Error('ACP turn timed out')), timeoutMs);
-            timer.unref();
-          }),
-        ]);
-      } catch (error) {
-        await this.cancel(sessionId);
-        throw error;
-      }
-    }
     return { success: true, reviewText: this.reviewText, toolCalls: this.toolCalls };
-  }
-
-  async cancel(sessionId: string): Promise<void> {
-    try {
-      await this.send('session/cancel', { sessionId });
-    } catch {
-      // Best effort
-    }
   }
 
   kill(): void {
@@ -159,7 +127,6 @@ export class AcpClient {
       return;
     }
 
-    // JSON-RPC response
     if (msg.id !== undefined) {
       const p = this.pending.get(msg.id);
       if (p) {
@@ -173,32 +140,30 @@ export class AcpClient {
       return;
     }
 
-    // Notification (no id)
-    if (msg.method === 'session/notification' && msg.params) {
-      this.handleNotification(msg.params);
+    if (msg.method === 'session/update' && msg.params) {
+      this.handleUpdate(msg.params);
     }
   }
 
-  private handleNotification(params: Record<string, unknown>): void {
-    const type = params.type as string | undefined;
-    switch (type) {
-      case 'AgentMessageChunk': {
-        const text = (params.data as { text?: string })?.text;
+  private handleUpdate(params: Record<string, unknown>): void {
+    const update = params.update as
+      | { sessionUpdate?: string; content?: { text?: string }; title?: string }
+      | undefined;
+    if (!update) return;
+
+    switch (update.sessionUpdate) {
+      case 'agent_message_chunk': {
+        const text = update.content?.text;
         if (text) this.reviewText += text;
         break;
       }
-      case 'ToolCall': {
-        const data = params.data as { name?: string; status?: string } | undefined;
-        if (data?.name) {
-          this.toolCalls.push({ name: data.name, status: data.status ?? 'unknown' });
-          core.info(`Tool call: ${data.name} (${data.status ?? 'unknown'})`);
+      case 'tool_call': {
+        if (update.title) {
+          this.toolCalls.push(update.title);
+          core.info(`Tool call: ${update.title}`);
         }
         break;
       }
-      case 'TurnEnd':
-        this.turnEnded = true;
-        this.turnEndResolve?.();
-        break;
     }
   }
 }

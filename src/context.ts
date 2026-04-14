@@ -10,7 +10,6 @@ export function parseInputs(): ActionInputs {
     agent: core.getInput('agent'),
     prompt: core.getInput('prompt'),
     maxDiffSize: Number.parseInt(core.getInput('max_diff_size') || '10000', 10),
-    timeoutMinutes: Number.parseInt(core.getInput('timeout_minutes') || '5', 10),
     debug: core.getInput('debug') === 'true',
     githubMcpVersion: core.getInput('github_mcp_version') || GITHUB_MCP_VERSION,
   };

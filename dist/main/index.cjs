@@ -40646,8 +40646,6 @@ var AcpClient = class {
   pending = /* @__PURE__ */ new Map();
   reviewText = "";
   toolCalls = [];
-  turnEnded = false;
-  turnEndResolve = null;
   get process() {
     return this.proc;
   }
@@ -40661,7 +40659,6 @@ var AcpClient = class {
     this.proc.on("error", (err) => error(`ACP process error: ${err.message}`));
     this.proc.on("exit", (code) => {
       if (this.debug) info(`ACP process exited with code ${code}`);
-      this.turnEndResolve?.();
     });
     const stdout = this.proc.stdout;
     if (!stdout) {
@@ -40696,36 +40693,11 @@ var AcpClient = class {
   async prompt(sessionId, text) {
     this.reviewText = "";
     this.toolCalls = [];
-    this.turnEnded = false;
     await this.send("session/prompt", {
       sessionId,
       prompt: [{ type: "text", text }]
     });
-  }
-  async waitForTurnEnd(timeoutMs, sessionId) {
-    if (!this.turnEnded) {
-      try {
-        await Promise.race([
-          new Promise((resolve) => {
-            this.turnEndResolve = resolve;
-          }),
-          new Promise((_, reject) => {
-            const timer = setTimeout(() => reject(new Error("ACP turn timed out")), timeoutMs);
-            timer.unref();
-          })
-        ]);
-      } catch (error2) {
-        await this.cancel(sessionId);
-        throw error2;
-      }
-    }
     return { success: true, reviewText: this.reviewText, toolCalls: this.toolCalls };
-  }
-  async cancel(sessionId) {
-    try {
-      await this.send("session/cancel", { sessionId });
-    } catch {
-    }
   }
   kill() {
     if (this.proc?.pid && !this.proc.killed) {
@@ -40767,30 +40739,26 @@ var AcpClient = class {
       }
       return;
     }
-    if (msg.method === "session/notification" && msg.params) {
-      this.handleNotification(msg.params);
+    if (msg.method === "session/update" && msg.params) {
+      this.handleUpdate(msg.params);
     }
   }
-  handleNotification(params) {
-    const type = params.type;
-    switch (type) {
-      case "AgentMessageChunk": {
-        const text = params.data?.text;
+  handleUpdate(params) {
+    const update = params.update;
+    if (!update) return;
+    switch (update.sessionUpdate) {
+      case "agent_message_chunk": {
+        const text = update.content?.text;
         if (text) this.reviewText += text;
         break;
       }
-      case "ToolCall": {
-        const data = params.data;
-        if (data?.name) {
-          this.toolCalls.push({ name: data.name, status: data.status ?? "unknown" });
-          info(`Tool call: ${data.name} (${data.status ?? "unknown"})`);
+      case "tool_call": {
+        if (update.title) {
+          this.toolCalls.push(update.title);
+          info(`Tool call: ${update.title}`);
         }
         break;
       }
-      case "TurnEnd":
-        this.turnEnded = true;
-        this.turnEndResolve?.();
-        break;
     }
   }
 };
@@ -40817,7 +40785,6 @@ function parseInputs() {
     agent: getInput("agent"),
     prompt: getInput("prompt"),
     maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
-    timeoutMinutes: Number.parseInt(getInput("timeout_minutes") || "5", 10),
     debug: getInput("debug") === "true",
     githubMcpVersion: getInput("github_mcp_version") || GITHUB_MCP_VERSION
   };
@@ -40964,7 +40931,6 @@ async function run() {
     }
   }
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
-  saveState("acp_pid", "");
   try {
     await acp.start(agentName);
     if (acp.process?.pid) {
@@ -40973,10 +40939,8 @@ async function run() {
     await acp.initialize();
     const sessionId = await acp.createSession(mcpBinary, inputs.githubToken);
     info(`ACP session created: ${sessionId}`);
-    const prompt = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
-    await acp.prompt(sessionId, prompt);
-    const timeoutMs = inputs.timeoutMinutes * 6e4;
-    const result = await acp.waitForTurnEnd(timeoutMs, sessionId);
+    const promptText = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
+    const result = await acp.prompt(sessionId, promptText);
     info(`Complete. Tool calls: ${result.toolCalls.length}`);
     setOutput("review_result", result.success ? "pass" : "fail");
     setOutput("exit_code", "0");

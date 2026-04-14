@@ -43,7 +43,6 @@ describe('parseInputs', () => {
     expect(inputs.kiroApiKey).toBe('test-key');
     expect(inputs.githubToken).toBe('ghs_test');
     expect(inputs.maxDiffSize).toBe(10000);
-    expect(inputs.timeoutMinutes).toBe(5);
     expect(inputs.debug).toBe(false);
   });
 
@@ -53,7 +52,6 @@ describe('parseInputs', () => {
         kiro_api_key: 'my-key',
         github_token: 'my-token',
         max_diff_size: '5000',
-        timeout_minutes: '3',
         debug: 'true',
       };
       return map[name] ?? '';
@@ -61,7 +59,6 @@ describe('parseInputs', () => {
     const inputs = parseInputs();
     expect(inputs.githubToken).toBe('my-token');
     expect(inputs.maxDiffSize).toBe(5000);
-    expect(inputs.timeoutMinutes).toBe(3);
     expect(inputs.debug).toBe(true);
   });
 });
