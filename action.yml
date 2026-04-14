@@ -1,0 +1,39 @@
+name: 'Kiro CLI Review Action'
+description: 'Automated PR code review using kiro-cli with ACP integration'
+branding:
+  icon: 'eye'
+  color: 'blue'
+
+inputs:
+  kiro_api_key:
+    description: 'Kiro CLI API key'
+    required: true
+  github_token:
+    description: 'GitHub token for MCP Server and PR comments'
+    required: false
+  agent:
+    description: 'Custom agent JSON path (defaults to bundled code-reviewer)'
+    required: false
+  max_diff_size:
+    description: 'Maximum diff size in characters'
+    default: '10000'
+  timeout_minutes:
+    description: 'kiro-cli execution timeout in minutes'
+    default: '5'
+  debug:
+    description: 'Show full kiro-cli output (WARNING: may expose secrets in logs)'
+    default: 'false'
+  github_mcp_version:
+    description: 'github-mcp-server version to install'
+    default: '0.32.0'
+
+outputs:
+  review_result:
+    description: 'Review summary (pass/fail/skip)'
+  exit_code:
+    description: 'kiro-cli exit code (0=success, 1=failure)'
+
+runs:
+  using: 'node24'
+  main: 'dist/main/index.cjs'
+  post: 'dist/post/index.cjs'

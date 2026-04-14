@@ -1,0 +1,19 @@
+{
+  "name": "code-reviewer",
+  "description": "Autonomous PR code reviewer",
+  "tools": ["fs_read", "grep", "glob", "code", "@github"],
+  "allowedTools": ["fs_read", "grep", "glob", "code", "@github"],
+  "resources": ["file://CONTRIBUTING.md", "file://.github/PULL_REQUEST_TEMPLATE.md"],
+  "hooks": {
+    "preToolUse": [
+      {
+        "matcher": "fs_write",
+        "command": "echo 'BLOCKED: write not allowed in review mode' >&2; exit 2"
+      },
+      {
+        "matcher": "execute_bash",
+        "command": "echo 'BLOCKED: shell not allowed in review mode' >&2; exit 2"
+      }
+    ]
+  }
+}

@@ -1,0 +1,47 @@
+name: Update Major Tag
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name that the major tag will point to (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-tag:
+    name: Update major version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: main
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Update README commit hash
+        if: github.event_name == 'release'
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          sed -i "s|kiro-cli-review-action@[0-9a-f]\{40\}|kiro-cli-review-action@${RELEASE_SHA}|g" README.md
+          git add README.md
+          git commit -m "docs: update README SHA to ${TAG} [skip ci]" || true
+          git push origin main
+
+      - name: Update major version tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          MAJOR="${TAG%%.*}"
+          git tag -fa "${MAJOR}" -m "${MAJOR}"
+          git push origin "${MAJOR}" --force
