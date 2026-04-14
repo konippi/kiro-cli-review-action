@@ -40631,7 +40631,6 @@ function saveState(name, value) {
 
 // src/acp-client.ts
 var import_node_child_process = require("node:child_process");
-var import_node_readline = require("node:readline");
 var AcpClient = class {
   constructor(kiroBinary, debug2, kiroApiKey) {
     this.kiroBinary = kiroBinary;
@@ -40665,8 +40664,7 @@ var AcpClient = class {
     if (!stdout) {
       throw new Error("ACP process stdout is not available");
     }
-    const rl = (0, import_node_readline.createInterface)({ input: stdout });
-    rl.on("line", (line) => this.handleLine(line));
+    this.readMessages(stdout);
   }
   async initialize() {
     await this.send("initialize", {});
@@ -40732,17 +40730,45 @@ var AcpClient = class {
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
       const msg = { jsonrpc: "2.0", id, method, params };
-      const line = JSON.stringify(msg);
-      if (this.debug) info(`ACP \u2192 ${line}`);
-      this.proc.stdin.write(`${line}
-`);
+      const body = JSON.stringify(msg);
+      const header = `Content-Length: ${Buffer.byteLength(body)}\r
+\r
+`;
+      if (this.debug) info(`ACP \u2192 ${body}`);
+      this.proc.stdin.write(header + body);
     });
   }
-  handleLine(line) {
-    if (this.debug) info(`ACP \u2190 ${line}`);
+  readMessages(stream) {
+    let buffer = Buffer.alloc(0);
+    let contentLength = -1;
+    stream.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (true) {
+        if (contentLength === -1) {
+          const headerEnd = buffer.indexOf("\r\n\r\n");
+          if (headerEnd === -1) break;
+          const header = buffer.subarray(0, headerEnd).toString();
+          const match = header.match(/Content-Length:\s*(\d+)/i);
+          if (!match) {
+            buffer = buffer.subarray(headerEnd + 4);
+            continue;
+          }
+          contentLength = Number.parseInt(match[1] ?? "0", 10);
+          buffer = buffer.subarray(headerEnd + 4);
+        }
+        if (buffer.length < contentLength) break;
+        const body = buffer.subarray(0, contentLength).toString();
+        buffer = buffer.subarray(contentLength);
+        contentLength = -1;
+        this.handleLine(body);
+      }
+    });
+  }
+  handleLine(raw) {
+    if (this.debug) info(`ACP \u2190 ${raw}`);
     let msg;
     try {
-      msg = JSON.parse(line);
+      msg = JSON.parse(raw);
     } catch {
       return;
     }

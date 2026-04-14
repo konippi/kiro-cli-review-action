@@ -13,6 +13,12 @@ vi.mock('node:child_process', () => ({
 import { spawn } from 'node:child_process';
 import { AcpClient } from '../src/acp-client.js';
 
+function sendMessage(stdout: PassThrough, json: string): void {
+  const body = Buffer.from(json);
+  stdout.push(`Content-Length: ${body.length}\r\n\r\n`);
+  stdout.push(body);
+}
+
 function createMockProcess() {
   const stdin = new PassThrough();
   const stdout = new PassThrough();
@@ -45,7 +51,6 @@ describe('AcpClient', () => {
 
   it('rejects send when process stdin is not writable', async () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
-    // proc is null — not started
     await expect(client.initialize()).rejects.toThrow('ACP process not available');
   });
 
@@ -57,8 +62,7 @@ describe('AcpClient', () => {
     await client.start();
 
     const promise = client.initialize();
-    // Simulate JSON-RPC response
-    stdout.push('{"jsonrpc":"2.0","id":1,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
 
     await expect(promise).resolves.toBeUndefined();
   });
@@ -71,7 +75,7 @@ describe('AcpClient', () => {
     await client.start();
 
     const promise = client.initialize();
-    stdout.push('{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"fail"}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"fail"}}');
 
     await expect(promise).rejects.toThrow('ACP error -1: fail');
   });
@@ -83,34 +87,34 @@ describe('AcpClient', () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start();
 
-    // Initialize
     const initPromise = client.initialize();
-    stdout.push('{"jsonrpc":"2.0","id":1,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
     await initPromise;
 
-    // Create session
     const sessionPromise = client.createSession('agent', '/bin/mcp', 'token');
-    stdout.push('{"jsonrpc":"2.0","id":2,"result":{"session_id":"sess-1"}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"session_id":"sess-1"}}');
     const sessionId = await sessionPromise;
     expect(sessionId).toBe('sess-1');
 
-    // Prompt
     const promptPromise = client.prompt(sessionId, 'review this');
-    stdout.push('{"jsonrpc":"2.0","id":3,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{}}');
     await promptPromise;
 
-    // Notifications
-    stdout.push(
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"looks "}}}\n',
+    sendMessage(
+      stdout,
+      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"looks "}}}',
     );
-    stdout.push(
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"ToolCall","data":{"name":"fs_read","status":"success"}}}\n',
+    sendMessage(
+      stdout,
+      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"ToolCall","data":{"name":"fs_read","status":"success"}}}',
     );
-    stdout.push(
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"good"}}}\n',
+    sendMessage(
+      stdout,
+      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"AgentMessageChunk","data":{"text":"good"}}}',
     );
-    stdout.push(
-      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"TurnEnd","data":{}}}\n',
+    sendMessage(
+      stdout,
+      '{"jsonrpc":"2.0","method":"session/notification","params":{"type":"TurnEnd","data":{}}}',
     );
 
     const result = await client.waitForTurnEnd(5000, sessionId);
@@ -138,38 +142,35 @@ describe('AcpClient', () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start();
 
-    // Initialize + create session + prompt
     const initP = client.initialize();
-    stdout.push('{"jsonrpc":"2.0","id":1,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
     await initP;
     const sessP = client.createSession('a', '/b', 't');
-    stdout.push('{"jsonrpc":"2.0","id":2,"result":{"session_id":"s1"}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":2,"result":{"session_id":"s1"}}');
     await sessP;
     const promptP = client.prompt('s1', 'hi');
-    stdout.push('{"jsonrpc":"2.0","id":3,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{}}');
     await promptP;
 
-    // waitForTurnEnd with very short timeout — no TurnEnd sent
-    // cancel will be called, which sends id:4, respond to it
     const waitP = client.waitForTurnEnd(1, 's1');
     setTimeout(() => {
-      stdout.push('{"jsonrpc":"2.0","id":4,"result":{}}\n');
+      sendMessage(stdout, '{"jsonrpc":"2.0","id":4,"result":{}}');
     }, 10);
     await expect(waitP).rejects.toThrow('ACP turn timed out');
   });
 
-  it('ignores non-JSON lines', async () => {
+  it('ignores invalid Content-Length messages', async () => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start();
 
-    // Push garbage — should not throw
-    stdout.push('not json at all\n');
+    // Push garbage without Content-Length header
+    stdout.push('not a valid message\r\n\r\n');
 
     const initP = client.initialize();
-    stdout.push('{"jsonrpc":"2.0","id":1,"result":{}}\n');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
     await expect(initP).resolves.toBeUndefined();
   });
 });
