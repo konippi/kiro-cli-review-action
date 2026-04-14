@@ -40667,7 +40667,13 @@ var AcpClient = class {
     this.readMessages(stdout);
   }
   async initialize() {
-    await this.send("initialize", {});
+    await this.send("initialize", {
+      protocolVersion: "2025-01-01",
+      clientInfo: {
+        name: "kiro-cli-review-action",
+        version: "0.1.0"
+      }
+    });
   }
   async createSession(agent, mcpServerBinary, githubToken) {
     const result = await this.send("session/new", {

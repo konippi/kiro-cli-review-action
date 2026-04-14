@@ -62,7 +62,13 @@ export class AcpClient {
   }
 
   async initialize(): Promise<void> {
-    await this.send('initialize', {});
+    await this.send('initialize', {
+      protocolVersion: '2025-01-01',
+      clientInfo: {
+        name: 'kiro-cli-review-action',
+        version: '0.1.0',
+      },
+    });
   }
 
   async createSession(
