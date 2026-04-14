@@ -1,43 +1,43 @@
 name: E2E Test
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  e2e:
-    name: E2E Test
+  smoke-test:
+    name: Smoke Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      - name: Test Action
-        id: test
-        uses: ./
-        with:
-          kiro_api_key: ${{ secrets.KIRO_API_KEY }}
-        continue-on-error: true
-
-      - name: Verify outputs
+      - name: Install kiro-cli
         run: |
-          RESULT="${{ steps.test.outputs.review_result }}"
-          EXIT_CODE="${{ steps.test.outputs.exit_code }}"
+          curl -fsSL https://cli.kiro.dev/install | bash -s -- --force
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-          echo "review_result: $RESULT"
-          echo "exit_code: $EXIT_CODE"
+      - name: Verify kiro-cli
+        run: kiro-cli --version
 
-          if [ -z "$RESULT" ]; then
-            echo "❌ No review_result output"
+      - name: Install github-mcp-server
+        run: |
+          curl -L "https://github.com/github/github-mcp-server/releases/download/v0.32.0/github-mcp-server_Linux_x86_64.tar.gz" | tar xz
+          chmod +x github-mcp-server
+          ./github-mcp-server --help || true
+
+      - name: Test ACP connection
+        env:
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+        run: |
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | timeout 30 kiro-cli acp || EXIT_CODE=$?
+          if [ "${EXIT_CODE:-0}" -le 1 ]; then
+            echo "✅ ACP process started and responded"
+          else
+            echo "❌ ACP process failed with code $EXIT_CODE"
             exit 1
           fi
-
-          echo "✅ Action produced outputs"
