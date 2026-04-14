@@ -21,12 +21,20 @@ export function parseEventContext(): EventContext | null {
   const pr = context.payload.pull_request;
   if (!pr) return null;
 
+  const baseBranch = pr.base?.ref;
+  const prNumber = pr.number;
+  const isFork = pr.head?.repo?.fork;
+
+  if (typeof baseBranch !== 'string' || typeof prNumber !== 'number') {
+    throw new Error('Unexpected pull_request payload: missing base.ref or number');
+  }
+
   return {
     eventName: context.eventName,
     owner: context.repo.owner,
     repo: context.repo.repo,
-    prNumber: pr.number as number,
-    baseBranch: pr.base.ref as string,
-    isFork: (pr.head.repo?.fork as boolean) ?? false,
+    prNumber,
+    baseBranch,
+    isFork: typeof isFork === 'boolean' ? isFork : false,
   };
 }

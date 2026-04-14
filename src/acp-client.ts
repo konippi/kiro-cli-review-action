@@ -52,6 +52,10 @@ export class AcpClient {
     this.proc.on('error', (err) => core.error(`ACP process error: ${err.message}`));
     this.proc.on('exit', (code) => {
       if (this.debug) core.info(`ACP process exited with code ${code}`);
+      for (const [id, p] of this.pending) {
+        p.reject(new Error(`ACP process exited with code ${code}`));
+        this.pending.delete(id);
+      }
     });
 
     const stdout = this.proc.stdout;

@@ -40659,6 +40659,10 @@ var AcpClient = class {
     this.proc.on("error", (err) => error(`ACP process error: ${err.message}`));
     this.proc.on("exit", (code) => {
       if (this.debug) info(`ACP process exited with code ${code}`);
+      for (const [id, p] of this.pending) {
+        p.reject(new Error(`ACP process exited with code ${code}`));
+        this.pending.delete(id);
+      }
     });
     const stdout = this.proc.stdout;
     if (!stdout) {
@@ -40793,13 +40797,19 @@ function parseEventContext() {
   const { context } = github;
   const pr = context.payload.pull_request;
   if (!pr) return null;
+  const baseBranch = pr.base?.ref;
+  const prNumber = pr.number;
+  const isFork = pr.head?.repo?.fork;
+  if (typeof baseBranch !== "string" || typeof prNumber !== "number") {
+    throw new Error("Unexpected pull_request payload: missing base.ref or number");
+  }
   return {
     eventName: context.eventName,
     owner: context.repo.owner,
     repo: context.repo.repo,
-    prNumber: pr.number,
-    baseBranch: pr.base.ref,
-    isFork: pr.head.repo?.fork ?? false
+    prNumber,
+    baseBranch,
+    isFork: typeof isFork === "boolean" ? isFork : false
   };
 }
 
