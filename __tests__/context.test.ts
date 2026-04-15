@@ -114,9 +114,11 @@ describe('parseCommentContext', () => {
   function setCommentPayload(overrides: { body?: string; association?: string; hasPR?: boolean }) {
     ctx.eventName = 'issue_comment';
     ctx.payload = {
+      action: 'created',
       comment: {
         body: overrides.body ?? '@kiro review this',
         author_association: overrides.association ?? 'OWNER',
+        user: { type: 'User' },
       },
       issue: {
         number: 10,
@@ -131,7 +133,13 @@ describe('parseCommentContext', () => {
       owner: 'test-owner',
       repo: 'test-repo',
       prNumber: 10,
+      userRequest: 'review this',
     });
+  });
+
+  it('returns null userRequest when no text after trigger', () => {
+    setCommentPayload({ body: '@kiro' });
+    expect(parseCommentContext('@kiro')?.userRequest).toBeNull();
   });
 
   it.each(['MEMBER', 'COLLABORATOR'])('returns context for %s', (assoc) => {
@@ -172,6 +180,18 @@ describe('parseCommentContext', () => {
   it('returns null when payload is missing comment or issue', () => {
     ctx.eventName = 'issue_comment';
     ctx.payload = {};
+    expect(parseCommentContext('@kiro')).toBeNull();
+  });
+
+  it('returns null for comment edits (action !== created)', () => {
+    setCommentPayload({});
+    ctx.payload.action = 'edited';
+    expect(parseCommentContext('@kiro')).toBeNull();
+  });
+
+  it('returns null for bot comments', () => {
+    setCommentPayload({});
+    (ctx.payload.comment as Record<string, unknown>).user = { type: 'Bot' };
     expect(parseCommentContext('@kiro')).toBeNull();
   });
 });
