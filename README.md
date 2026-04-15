@@ -20,6 +20,8 @@
 
 ### Quick Start
 
+> **Note**: For production use, consider [pinning actions to a full-length commit SHA](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions) for immutable releases.
+
 ```yaml
 name: Kiro Review
 on:
@@ -35,8 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: konippi/kiro-cli-review-action@cfac2982a914163e50be5d51b6cd4685790447f6 # v0
+      - uses: actions/checkout@v6
+      - uses: konippi/kiro-cli-review-action@v1
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
@@ -63,10 +65,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || '' }}
-      - uses: konippi/kiro-cli-review-action@cfac2982a914163e50be5d51b6cd4685790447f6 # v0
+      - uses: konippi/kiro-cli-review-action@v1
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
