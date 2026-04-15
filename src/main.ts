@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { AcpClient } from './acp-client.js';
@@ -53,15 +53,24 @@ async function run(): Promise<void> {
   if (!inputs.agent) {
     const agentDir = join('.kiro', 'agents');
     const dest = join(agentDir, 'code-reviewer.json');
-    const needsWrite = !existsSync(dest) || inputs.model;
-    if (needsWrite) {
+    if (inputs.model !== '') {
       const source = existsSync(dest) ? dest : join(actionPath, 'agents', 'code-reviewer.json');
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(readFileSync(source, 'utf-8')) as Record<string, unknown>;
+      } catch {
+        config = JSON.parse(
+          readFileSync(join(actionPath, 'agents', 'code-reviewer.json'), 'utf-8'),
+        ) as Record<string, unknown>;
+      }
       mkdirSync(agentDir, { recursive: true });
-      const config = JSON.parse(readFileSync(source, 'utf-8')) as Record<string, unknown>;
-      if (inputs.model) config.model = inputs.model;
+      config.model = inputs.model;
       writeFileSync(dest, JSON.stringify(config, null, 2));
+    } else if (!existsSync(dest)) {
+      mkdirSync(agentDir, { recursive: true });
+      copyFileSync(join(actionPath, 'agents', 'code-reviewer.json'), dest);
     }
-  } else if (inputs.model) {
+  } else if (inputs.model !== '') {
     core.warning('model input is ignored when agent input is specified');
   }
 

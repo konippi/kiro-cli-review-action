@@ -24096,15 +24096,24 @@ async function run() {
   if (!inputs.agent) {
     const agentDir = (0, import_node_path2.join)(".kiro", "agents");
     const dest = (0, import_node_path2.join)(agentDir, "code-reviewer.json");
-    const needsWrite = !(0, import_node_fs3.existsSync)(dest) || inputs.model;
-    if (needsWrite) {
+    if (inputs.model !== "") {
       const source = (0, import_node_fs3.existsSync)(dest) ? dest : (0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json");
+      let config;
+      try {
+        config = JSON.parse((0, import_node_fs3.readFileSync)(source, "utf-8"));
+      } catch {
+        config = JSON.parse(
+          (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json"), "utf-8")
+        );
+      }
       (0, import_node_fs3.mkdirSync)(agentDir, { recursive: true });
-      const config = JSON.parse((0, import_node_fs3.readFileSync)(source, "utf-8"));
-      if (inputs.model) config.model = inputs.model;
+      config.model = inputs.model;
       (0, import_node_fs3.writeFileSync)(dest, JSON.stringify(config, null, 2));
+    } else if (!(0, import_node_fs3.existsSync)(dest)) {
+      (0, import_node_fs3.mkdirSync)(agentDir, { recursive: true });
+      (0, import_node_fs3.copyFileSync)((0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json"), dest);
     }
-  } else if (inputs.model) {
+  } else if (inputs.model !== "") {
     warning("model input is ignored when agent input is specified");
   }
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
