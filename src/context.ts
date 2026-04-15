@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { GITHUB_MCP_VERSION } from './constants.js';
+import { extractUserRequest, sanitizeComment } from './sanitize.js';
 import type { ActionInputs, CommentContext, EventContext } from './types.js';
 
 const ALLOWED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -54,6 +55,12 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   const issue = context.payload.issue;
   if (!comment || !issue) return null;
 
+  // Only react to new comments (not edits/deletes)
+  if (context.payload.action !== 'created') return null;
+
+  // Prevent bot loops
+  if (comment.user?.type === 'Bot') return null;
+
   // Must be a PR comment (issues have no pull_request field)
   if (!issue.pull_request) return null;
 
@@ -71,9 +78,13 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
     return null;
   }
 
+  const raw = extractUserRequest(body, triggerPhrase);
+  const userRequest = raw ? sanitizeComment(raw) || null : null;
+
   return {
     owner: context.repo.owner,
     repo: context.repo.repo,
     prNumber: issue.number as number,
+    userRequest,
   };
 }

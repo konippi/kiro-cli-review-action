@@ -24,6 +24,7 @@ export interface CommentContext {
   readonly owner: string;
   readonly repo: string;
   readonly prNumber: number;
+  readonly userRequest: string | null;
 }
 
 export interface ReviewResult {

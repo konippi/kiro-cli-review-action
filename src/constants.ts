@@ -8,3 +8,5 @@ export const GITHUB_MCP_VERSION = '0.32.0';
 export const SENSITIVE_PATHS = ['.kiro', '.amazonq', '.gitmodules', '.husky', 'AGENTS.md'] as const;
 
 export const SIGTERM_GRACE_MS = 5_000;
+
+export const MAX_USER_REQUEST_LENGTH = 2048;
