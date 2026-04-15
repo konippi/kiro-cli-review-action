@@ -1,0 +1,33 @@
+name: Kiro Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Kiro Review
+        uses: ./
+        with:
+          kiro_api_key: ${{ secrets.KIRO_API_KEY }}
+          github_token: ${{ github.token }}
