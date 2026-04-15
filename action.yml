@@ -1,8 +1,8 @@
 name: 'Kiro CLI Review Action'
-description: 'Automated PR code review using kiro-cli with ACP integration'
+description: 'Automated PR code review powered by Kiro CLI'
 branding:
-  icon: 'eye'
-  color: 'blue'
+  icon: 'git-pull-request'
+  color: 'purple'
 
 inputs:
   kiro_api_key:
