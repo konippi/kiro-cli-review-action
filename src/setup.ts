@@ -49,6 +49,9 @@ async function downloadAndExtract(
 }
 
 export async function installGithubMcpServer(version: string, installDir: string): Promise<string> {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`Invalid github_mcp_version: ${version}`);
+  }
   const url = `https://github.com/github/github-mcp-server/releases/download/v${version}/github-mcp-server_Linux_x86_64.tar.gz`;
   return downloadAndExtract(url, installDir, 'github-mcp-server');
 }

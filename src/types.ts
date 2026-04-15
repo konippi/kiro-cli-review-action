@@ -11,7 +11,6 @@ export interface ActionInputs {
 
 /** Parsed GitHub event context. Only available for pull_request events. */
 export interface EventContext {
-  readonly eventName: string;
   readonly owner: string;
   readonly repo: string;
   readonly prNumber: number;
@@ -21,7 +20,6 @@ export interface EventContext {
 
 /** Result of a kiro-cli review session. */
 export interface ReviewResult {
-  readonly success: boolean;
   readonly reviewText: string;
   readonly toolCalls: readonly string[];
 }

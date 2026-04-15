@@ -6,7 +6,6 @@ vi.mock('@actions/core', () => ({
 
 vi.mock('@actions/github', () => ({
   context: {
-    eventName: 'pull_request',
     repo: { owner: 'test-owner', repo: 'test-repo' },
     payload: {
       pull_request: {
@@ -67,7 +66,6 @@ describe('parseEventContext', () => {
   it('parses pull_request event', () => {
     const event = parseEventContext();
     expect(event).not.toBeNull();
-    expect(event?.eventName).toBe('pull_request');
     expect(event?.owner).toBe('test-owner');
     expect(event?.repo).toBe('test-repo');
     expect(event?.prNumber).toBe(42);

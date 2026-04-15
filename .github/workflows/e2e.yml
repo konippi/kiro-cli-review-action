@@ -31,10 +31,10 @@ jobs:
           debug: 'true'
 
       - name: Verify outputs
+        env:
+          RESULT: ${{ steps.test.outputs.review_result }}
+          EXIT_CODE: ${{ steps.test.outputs.exit_code }}
         run: |
-          RESULT="${{ steps.test.outputs.review_result }}"
-          EXIT_CODE="${{ steps.test.outputs.exit_code }}"
-
           echo "review_result: $RESULT"
           echo "exit_code: $EXIT_CODE"
 

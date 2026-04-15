@@ -67,7 +67,7 @@ async function run(): Promise<void> {
     const result = await acp.prompt(sessionId, promptText);
 
     core.info(`Complete. Tool calls: ${result.toolCalls.length}`);
-    core.setOutput('review_result', result.success ? 'pass' : 'fail');
+    core.setOutput('review_result', 'pass');
     core.setOutput('exit_code', '0');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -89,7 +89,8 @@ function buildReviewPrompt(
   let systemPrompt = '';
   try {
     systemPrompt = readFileSync(join(actionPath, 'prompts', 'review.md'), 'utf-8');
-  } catch {
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
     systemPrompt = 'You are an expert code reviewer. Focus on bugs, security, and maintainability.';
   }
 

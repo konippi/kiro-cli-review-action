@@ -30,7 +30,6 @@ export function parseEventContext(): EventContext | null {
   }
 
   return {
-    eventName: context.eventName,
     owner: context.repo.owner,
     repo: context.repo.repo,
     prNumber,

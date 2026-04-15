@@ -77,7 +77,7 @@ export class AcpClient {
   }
 
   async createSession(mcpServerBinary: string, githubToken: string): Promise<string> {
-    const result = (await this.send('session/new', {
+    const result = await this.send('session/new', {
       cwd: process.cwd(),
       mcpServers: [
         {
@@ -87,8 +87,12 @@ export class AcpClient {
           env: [{ name: 'GITHUB_PERSONAL_ACCESS_TOKEN', value: githubToken }],
         },
       ],
-    })) as { sessionId: string };
-    return result.sessionId;
+    });
+    const sessionId = (result as Record<string, unknown>)?.sessionId;
+    if (typeof sessionId !== 'string') {
+      throw new Error('session/new response missing sessionId');
+    }
+    return sessionId;
   }
 
   async prompt(sessionId: string, text: string): Promise<ReviewResult> {
@@ -98,7 +102,7 @@ export class AcpClient {
       sessionId,
       prompt: [{ type: 'text', text }],
     });
-    return { success: true, reviewText: this.reviewText, toolCalls: this.toolCalls };
+    return { reviewText: this.reviewText, toolCalls: this.toolCalls };
   }
 
   kill(): void {

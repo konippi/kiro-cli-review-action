@@ -20078,7 +20078,11 @@ var AcpClient = class {
         }
       ]
     });
-    return result.sessionId;
+    const sessionId = result?.sessionId;
+    if (typeof sessionId !== "string") {
+      throw new Error("session/new response missing sessionId");
+    }
+    return sessionId;
   }
   async prompt(sessionId, text) {
     this.reviewText = "";
@@ -20087,7 +20091,7 @@ var AcpClient = class {
       sessionId,
       prompt: [{ type: "text", text }]
     });
-    return { success: true, reviewText: this.reviewText, toolCalls: this.toolCalls };
+    return { reviewText: this.reviewText, toolCalls: this.toolCalls };
   }
   kill() {
     if (this.proc?.pid && !this.proc.killed) {
@@ -23932,7 +23936,6 @@ function parseEventContext() {
     throw new Error("Unexpected pull_request payload: missing base.ref or number");
   }
   return {
-    eventName: context3.eventName,
     owner: context3.repo.owner,
     repo: context3.repo.repo,
     prNumber,
@@ -24013,6 +24016,9 @@ async function downloadAndExtract(url, installDir, binaryName) {
   return binaryPath;
 }
 async function installGithubMcpServer(version, installDir) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error(`Invalid github_mcp_version: ${version}`);
+  }
   const url = `https://github.com/github/github-mcp-server/releases/download/v${version}/github-mcp-server_Linux_x86_64.tar.gz`;
   return downloadAndExtract(url, installDir, "github-mcp-server");
 }
@@ -24080,7 +24086,7 @@ async function run() {
     const promptText = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
     const result = await acp.prompt(sessionId, promptText);
     info(`Complete. Tool calls: ${result.toolCalls.length}`);
-    setOutput("review_result", result.success ? "pass" : "fail");
+    setOutput("review_result", "pass");
     setOutput("exit_code", "0");
   } catch (error2) {
     const message = error2 instanceof Error ? error2.message : String(error2);
@@ -24096,7 +24102,8 @@ function buildReviewPrompt(event, actionPath, maxDiffSize) {
   let systemPrompt = "";
   try {
     systemPrompt = (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(actionPath, "prompts", "review.md"), "utf-8");
-  } catch {
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
     systemPrompt = "You are an expert code reviewer. Focus on bugs, security, and maintainability.";
   }
   return [

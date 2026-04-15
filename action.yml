@@ -12,7 +12,7 @@ inputs:
     description: 'GitHub token for MCP Server and PR comments'
     required: false
   agent:
-    description: 'Custom agent JSON path (defaults to bundled code-reviewer)'
+    description: 'Custom agent name (defaults to bundled code-reviewer)'
     required: false
   prompt:
     description: 'Direct prompt to execute. When provided, runs in prompt mode without requiring a PR context.'

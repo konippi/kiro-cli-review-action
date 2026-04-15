@@ -120,7 +120,6 @@ describe('AcpClient', () => {
 
     const result = await promptP;
     expect(result.reviewText).toBe('looks good');
-    expect(result.success).toBe(true);
   });
 
   it('kills process on kill()', async () => {
