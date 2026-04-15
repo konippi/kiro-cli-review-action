@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: konippi/kiro-cli-review-action@0000000000000000000000000000000000000000 # v0
+      - uses: konippi/kiro-cli-review-action@cfac2982a914163e50be5d51b6cd4685790447f6 # v0
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || '' }}
-      - uses: konippi/kiro-cli-review-action@0000000000000000000000000000000000000000 # v0
+      - uses: konippi/kiro-cli-review-action@cfac2982a914163e50be5d51b6cd4685790447f6 # v0
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
