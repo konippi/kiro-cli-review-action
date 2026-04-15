@@ -4,12 +4,13 @@ export interface ActionInputs {
   readonly githubToken: string;
   readonly agent: string;
   readonly prompt: string;
+  readonly triggerPhrase: string;
   readonly maxDiffSize: number;
   readonly debug: boolean;
   readonly githubMcpVersion: string;
 }
 
-/** Parsed GitHub event context. Only available for pull_request events. */
+/** Parsed GitHub event context for pull_request events. */
 export interface EventContext {
   readonly owner: string;
   readonly repo: string;
@@ -18,8 +19,12 @@ export interface EventContext {
   readonly isFork: boolean;
 }
 
-/** Result of a kiro-cli review session. */
+export interface CommentContext {
+  readonly owner: string;
+  readonly repo: string;
+  readonly prNumber: number;
+}
+
 export interface ReviewResult {
-  readonly reviewText: string;
   readonly toolCalls: readonly string[];
 }

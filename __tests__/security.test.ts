@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
@@ -26,16 +26,14 @@ beforeEach(() => {
   mockExistsSync.mockReturnValue(false);
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe('restoreConfigFromBase', () => {
-  it('throws on invalid branch names (command injection prevention)', () => {
-    expect(() => restoreConfigFromBase('main; rm -rf /')).toThrow('Invalid branch name');
-    expect(() => restoreConfigFromBase('')).toThrow('Invalid branch name');
-    expect(() => restoreConfigFromBase('$(whoami)')).toThrow('Invalid branch name');
-    expect(() => restoreConfigFromBase('../../etc')).toThrow('Invalid branch name');
+  it.each([
+    'main; rm -rf /',
+    '',
+    '$(whoami)',
+    '../../etc',
+  ])('throws on invalid branch name: %s', (branch) => {
+    expect(() => restoreConfigFromBase(branch)).toThrow('Invalid branch name');
   });
 
   it('fetches from base branch with --no-recurse-submodules', () => {

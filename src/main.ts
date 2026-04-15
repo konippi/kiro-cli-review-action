@@ -2,25 +2,33 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { AcpClient } from './acp-client.js';
-import { parseEventContext, parseInputs } from './context.js';
+import { parseCommentContext, parseEventContext, parseInputs } from './context.js';
 import { restoreConfigFromBase } from './security.js';
 import { installGithubMcpServer, installKiroCli } from './setup.js';
-import type { EventContext } from './types.js';
 
 async function run(): Promise<void> {
   const inputs = parseInputs();
   core.setSecret(inputs.kiroApiKey);
   if (inputs.githubToken) core.setSecret(inputs.githubToken);
 
+  // Determine mode: PR event, comment trigger, or direct prompt
   const event = parseEventContext();
+  const comment = parseCommentContext(inputs.triggerPhrase);
 
-  // Determine mode
-  if (!inputs.prompt && !event) {
-    throw new Error('Either "prompt" input or a pull_request event is required');
+  if (!inputs.prompt && !event && !comment) {
+    core.info('No matching trigger — skipping.');
+    core.setOutput('review_result', 'skip');
+    core.setOutput('exit_code', '0');
+    return;
   }
 
+  // Derive PR info from event or comment context
+  const prNumber = event?.prNumber ?? comment?.prNumber;
+  const owner = event?.owner ?? comment?.owner ?? '';
+  const repo = event?.repo ?? comment?.repo ?? '';
+
   if (event) {
-    core.info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
+    core.info(`Reviewing PR #${event.prNumber} in ${owner}/${repo}`);
     if (event.isFork) {
       core.warning('Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
       core.setOutput('review_result', 'skip');
@@ -28,6 +36,8 @@ async function run(): Promise<void> {
       return;
     }
     restoreConfigFromBase(event.baseBranch);
+  } else if (comment) {
+    core.info(`Comment-triggered review for PR #${comment.prNumber} in ${owner}/${repo}`);
   }
 
   // Install binaries
@@ -37,7 +47,7 @@ async function run(): Promise<void> {
     installGithubMcpServer(inputs.githubMcpVersion, installDir),
   ]);
 
-  // ACP session
+  // Copy bundled agent if needed
   const actionPath = process.env.GITHUB_ACTION_PATH || '.';
   const agentName = inputs.agent || 'code-reviewer';
   if (!inputs.agent) {
@@ -63,7 +73,15 @@ async function run(): Promise<void> {
     core.info(`ACP session created: ${sessionId}`);
 
     // Build prompt based on mode
-    const promptText = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
+    let promptText: string;
+    if (inputs.prompt) {
+      promptText = inputs.prompt;
+    } else if (prNumber) {
+      promptText = buildReviewPrompt({ owner, repo, prNumber }, actionPath, inputs.maxDiffSize);
+    } else {
+      throw new Error('No prompt or PR context available');
+    }
+
     const result = await acp.prompt(sessionId, promptText);
 
     core.info(`Complete. Tool calls: ${result.toolCalls.length}`);
@@ -80,12 +98,10 @@ async function run(): Promise<void> {
 }
 
 function buildReviewPrompt(
-  event: EventContext | null,
+  pr: { owner: string; repo: string; prNumber: number },
   actionPath: string,
   maxDiffSize: number,
 ): string {
-  if (!event) throw new Error('PR context is required for review mode');
-
   let systemPrompt = '';
   try {
     systemPrompt = readFileSync(join(actionPath, 'prompts', 'review.md'), 'utf-8');
@@ -97,7 +113,7 @@ function buildReviewPrompt(
   return [
     systemPrompt,
     '',
-    `Review pull request #${event.prNumber} in ${event.owner}/${event.repo}.`,
+    `Review pull request #${pr.prNumber} in ${pr.owner}/${pr.repo}.`,
     `Use pull_request_read to get the diff (max ${maxDiffSize} chars).`,
     'Analyze the changes, then submit a review with inline comments using pull_request_review_write and add_comment_to_pending_review.',
   ].join('\n');

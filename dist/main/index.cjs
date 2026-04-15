@@ -20030,7 +20030,6 @@ var AcpClient = class {
   proc = null;
   nextId = 1;
   pending = /* @__PURE__ */ new Map();
-  reviewText = "";
   toolCalls = [];
   get process() {
     return this.proc;
@@ -20085,13 +20084,12 @@ var AcpClient = class {
     return sessionId;
   }
   async prompt(sessionId, text) {
-    this.reviewText = "";
     this.toolCalls = [];
     await this.send("session/prompt", {
       sessionId,
       prompt: [{ type: "text", text }]
     });
-    return { reviewText: this.reviewText, toolCalls: this.toolCalls };
+    return { toolCalls: this.toolCalls };
   }
   kill() {
     if (this.proc?.pid && !this.proc.killed) {
@@ -20141,11 +20139,6 @@ var AcpClient = class {
     const update = params.update;
     if (!update) return;
     switch (update.sessionUpdate) {
-      case "agent_message_chunk": {
-        const text = update.content?.text;
-        if (text) this.reviewText += text;
-        break;
-      }
       case "tool_call": {
         if (update.title) {
           this.toolCalls.push(update.title);
@@ -23914,12 +23907,14 @@ var GITHUB_MCP_VERSION = "0.32.0";
 var SENSITIVE_PATHS = [".kiro", ".amazonq", ".gitmodules", ".husky", "AGENTS.md"];
 
 // src/context.ts
+var ALLOWED_ASSOCIATIONS = /* @__PURE__ */ new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 function parseInputs() {
   return {
     kiroApiKey: getInput("kiro_api_key", { required: true }),
     githubToken: getInput("github_token") || process.env.GITHUB_TOKEN || "",
     agent: getInput("agent"),
     prompt: getInput("prompt"),
+    triggerPhrase: getInput("trigger_phrase") || "@kiro",
     maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
     debug: getInput("debug") === "true",
     githubMcpVersion: getInput("github_mcp_version") || GITHUB_MCP_VERSION
@@ -23940,7 +23935,27 @@ function parseEventContext() {
     repo: context3.repo.repo,
     prNumber,
     baseBranch,
-    isFork: typeof isFork === "boolean" ? isFork : false
+    isFork: typeof isFork === "boolean" ? isFork : true
+  };
+}
+function parseCommentContext(triggerPhrase) {
+  const { context: context3 } = github_exports;
+  if (context3.eventName !== "issue_comment") return null;
+  const comment = context3.payload.comment;
+  const issue2 = context3.payload.issue;
+  if (!comment || !issue2) return null;
+  if (!issue2.pull_request) return null;
+  const body = typeof comment.body === "string" ? comment.body : "";
+  if (!body.includes(triggerPhrase)) return null;
+  const association = typeof comment.author_association === "string" ? comment.author_association : "";
+  if (!ALLOWED_ASSOCIATIONS.has(association)) {
+    info(`Skipping: author_association=${association} is not allowed`);
+    return null;
+  }
+  return {
+    owner: context3.repo.owner,
+    repo: context3.repo.repo,
+    prNumber: issue2.number
   };
 }
 
@@ -24030,8 +24045,7 @@ async function installKiroCli() {
   }
   info("Installing kiro-cli via official install script...");
   (0, import_node_child_process3.execFileSync)("bash", ["-c", "curl -fsSL https://cli.kiro.dev/install | bash -s -- --force"], {
-    stdio: "inherit",
-    env: { ...process.env }
+    stdio: "inherit"
   });
   if (!(0, import_node_fs2.existsSync)(expectedBinary)) {
     throw new Error("kiro-cli binary not found after installation");
@@ -24046,11 +24060,18 @@ async function run() {
   setSecret(inputs.kiroApiKey);
   if (inputs.githubToken) setSecret(inputs.githubToken);
   const event = parseEventContext();
-  if (!inputs.prompt && !event) {
-    throw new Error('Either "prompt" input or a pull_request event is required');
+  const comment = parseCommentContext(inputs.triggerPhrase);
+  if (!inputs.prompt && !event && !comment) {
+    info("No matching trigger \u2014 skipping.");
+    setOutput("review_result", "skip");
+    setOutput("exit_code", "0");
+    return;
   }
+  const prNumber = event?.prNumber ?? comment?.prNumber;
+  const owner = event?.owner ?? comment?.owner ?? "";
+  const repo = event?.repo ?? comment?.repo ?? "";
   if (event) {
-    info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
+    info(`Reviewing PR #${event.prNumber} in ${owner}/${repo}`);
     if (event.isFork) {
       warning("Fork PR detected \u2014 KIRO_API_KEY is unavailable. Skipping review.");
       setOutput("review_result", "skip");
@@ -24058,6 +24079,8 @@ async function run() {
       return;
     }
     restoreConfigFromBase(event.baseBranch);
+  } else if (comment) {
+    info(`Comment-triggered review for PR #${comment.prNumber} in ${owner}/${repo}`);
   }
   const installDir = (0, import_node_path2.join)(process.env.RUNNER_TEMP || "/tmp", "kiro-review");
   const [kiroBinary, mcpBinary] = await Promise.all([
@@ -24083,7 +24106,14 @@ async function run() {
     await acp.initialize();
     const sessionId = await acp.createSession(mcpBinary, inputs.githubToken);
     info(`ACP session created: ${sessionId}`);
-    const promptText = inputs.prompt || buildReviewPrompt(event, actionPath, inputs.maxDiffSize);
+    let promptText;
+    if (inputs.prompt) {
+      promptText = inputs.prompt;
+    } else if (prNumber) {
+      promptText = buildReviewPrompt({ owner, repo, prNumber }, actionPath, inputs.maxDiffSize);
+    } else {
+      throw new Error("No prompt or PR context available");
+    }
     const result = await acp.prompt(sessionId, promptText);
     info(`Complete. Tool calls: ${result.toolCalls.length}`);
     setOutput("review_result", "pass");
@@ -24097,8 +24127,7 @@ async function run() {
     acp.kill();
   }
 }
-function buildReviewPrompt(event, actionPath, maxDiffSize) {
-  if (!event) throw new Error("PR context is required for review mode");
+function buildReviewPrompt(pr, actionPath, maxDiffSize) {
   let systemPrompt = "";
   try {
     systemPrompt = (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(actionPath, "prompts", "review.md"), "utf-8");
@@ -24109,7 +24138,7 @@ function buildReviewPrompt(event, actionPath, maxDiffSize) {
   return [
     systemPrompt,
     "",
-    `Review pull request #${event.prNumber} in ${event.owner}/${event.repo}.`,
+    `Review pull request #${pr.prNumber} in ${pr.owner}/${pr.repo}.`,
     `Use pull_request_read to get the diff (max ${maxDiffSize} chars).`,
     "Analyze the changes, then submit a review with inline comments using pull_request_review_write and add_comment_to_pending_review."
   ].join("\n");
