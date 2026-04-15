@@ -23913,6 +23913,7 @@ function parseInputs() {
     kiroApiKey: getInput("kiro_api_key", { required: true }),
     githubToken: getInput("github_token") || process.env.GITHUB_TOKEN || "",
     agent: getInput("agent"),
+    model: getInput("model"),
     prompt: getInput("prompt"),
     triggerPhrase: getInput("trigger_phrase") || "@kiro",
     maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
@@ -24095,10 +24096,16 @@ async function run() {
   if (!inputs.agent) {
     const agentDir = (0, import_node_path2.join)(".kiro", "agents");
     const dest = (0, import_node_path2.join)(agentDir, "code-reviewer.json");
-    if (!(0, import_node_fs3.existsSync)(dest)) {
+    const needsWrite = !(0, import_node_fs3.existsSync)(dest) || inputs.model;
+    if (needsWrite) {
+      const source = (0, import_node_fs3.existsSync)(dest) ? dest : (0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json");
       (0, import_node_fs3.mkdirSync)(agentDir, { recursive: true });
-      (0, import_node_fs3.copyFileSync)((0, import_node_path2.join)(actionPath, "agents", "code-reviewer.json"), dest);
+      const config = JSON.parse((0, import_node_fs3.readFileSync)(source, "utf-8"));
+      if (inputs.model) config.model = inputs.model;
+      (0, import_node_fs3.writeFileSync)(dest, JSON.stringify(config, null, 2));
     }
+  } else if (inputs.model) {
+    warning("model input is ignored when agent input is specified");
   }
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
   try {

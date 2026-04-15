@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { AcpClient } from './acp-client.js';
@@ -53,10 +53,16 @@ async function run(): Promise<void> {
   if (!inputs.agent) {
     const agentDir = join('.kiro', 'agents');
     const dest = join(agentDir, 'code-reviewer.json');
-    if (!existsSync(dest)) {
+    const needsWrite = !existsSync(dest) || inputs.model;
+    if (needsWrite) {
+      const source = existsSync(dest) ? dest : join(actionPath, 'agents', 'code-reviewer.json');
       mkdirSync(agentDir, { recursive: true });
-      copyFileSync(join(actionPath, 'agents', 'code-reviewer.json'), dest);
+      const config = JSON.parse(readFileSync(source, 'utf-8')) as Record<string, unknown>;
+      if (inputs.model) config.model = inputs.model;
+      writeFileSync(dest, JSON.stringify(config, null, 2));
     }
+  } else if (inputs.model) {
+    core.warning('model input is ignored when agent input is specified');
   }
 
   const acp = new AcpClient(kiroBinary, inputs.debug, inputs.kiroApiKey);
