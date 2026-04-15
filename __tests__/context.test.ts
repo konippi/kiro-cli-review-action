@@ -151,6 +151,11 @@ describe('parseCommentContext', () => {
     expect(parseCommentContext('@kiro')).toBeNull();
   });
 
+  it('returns null for substring match like email@kiro.dev', () => {
+    setCommentPayload({ body: 'contact someone@kiro.dev for help' });
+    expect(parseCommentContext('@kiro')).toBeNull();
+  });
+
   it.each([
     'NONE',
     'FIRST_TIMER',

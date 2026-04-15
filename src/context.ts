@@ -57,7 +57,10 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   if (!issue.pull_request) return null;
 
   const body = typeof comment.body === 'string' ? comment.body : '';
-  if (!body.includes(triggerPhrase)) return null;
+  const pattern = new RegExp(
+    `(^|\\s)${triggerPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s.,!?;:]|$)`,
+  );
+  if (!pattern.test(body)) return null;
 
   // Security: only allow trusted users
   const association =

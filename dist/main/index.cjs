@@ -23946,7 +23946,10 @@ function parseCommentContext(triggerPhrase) {
   if (!comment || !issue2) return null;
   if (!issue2.pull_request) return null;
   const body = typeof comment.body === "string" ? comment.body : "";
-  if (!body.includes(triggerPhrase)) return null;
+  const pattern = new RegExp(
+    `(^|\\s)${triggerPhrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\s.,!?;:]|$)`
+  );
+  if (!pattern.test(body)) return null;
   const association = typeof comment.author_association === "string" ? comment.author_association : "";
   if (!ALLOWED_ASSOCIATIONS.has(association)) {
     info(`Skipping: author_association=${association} is not allowed`);
