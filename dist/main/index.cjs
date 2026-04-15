@@ -20055,6 +20055,8 @@ var AcpClient = class {
     }
     const rl = (0, import_node_readline.createInterface)({ input: stdout });
     rl.on("line", (line) => this.handleLine(line));
+    rl.on("error", () => {
+    });
   }
   async initialize() {
     await this.send("initialize", {

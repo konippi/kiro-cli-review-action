@@ -63,6 +63,7 @@ export class AcpClient {
     }
     const rl = createInterface({ input: stdout });
     rl.on('line', (line) => this.handleLine(line));
+    rl.on('error', () => {});
   }
 
   async initialize(): Promise<void> {
