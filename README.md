@@ -1,10 +1,20 @@
-[![CI](https://github.com/konippi/kiro-cli-review-action/actions/workflows/ci.yml/badge.svg)](https://github.com/konippi/kiro-cli-review-action/actions/workflows/ci.yml)
-[![E2E](https://github.com/konippi/kiro-cli-review-action/actions/workflows/e2e.yml/badge.svg)](https://github.com/konippi/kiro-cli-review-action/actions/workflows/e2e.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <img src="assets/kiro.png" alt="Kiro CLI Review Action" width="120">
+</p>
 
-# Kiro CLI Review Action
+<h1 align="center">Kiro CLI Review Action</h1>
 
-Automated PR code review using [kiro-cli](https://kiro.dev/cli/) with ACP (Agent Client Protocol) integration.
+<p align="center">
+  Automated PR code review powered by <a href="https://kiro.dev/cli/">Kiro CLI</a>.
+  <br>
+  Autonomously reads diffs, analyzes code, and posts inline review comments.
+</p>
+
+<p align="center">
+  <a href="https://github.com/konippi/kiro-cli-review-action/actions/workflows/ci.yml"><img src="https://github.com/konippi/kiro-cli-review-action/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/konippi/kiro-cli-review-action/actions/workflows/e2e.yml"><img src="https://github.com/konippi/kiro-cli-review-action/actions/workflows/e2e.yml/badge.svg" alt="E2E"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 ## Usage
 
