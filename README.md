@@ -80,6 +80,7 @@ The action handles all event filtering internally — only PR comments containin
 | `kiro_api_key` | Yes | — | Kiro CLI API key ([Kiro Pro/Pro+/Power](https://kiro.dev) subscription required) |
 | `github_token` | No | `GITHUB_TOKEN` env | GitHub token for MCP Server and PR comments |
 | `agent` | No | bundled `code-reviewer` | Custom agent name |
+| `model` | No | Kiro CLI default | Model ID for Kiro CLI (ignored when `agent` is specified) |
 | `prompt` | No | — | Direct prompt to execute without PR context |
 | `trigger_phrase` | No | `@kiro` | Trigger phrase for comment-based review |
 | `max_diff_size` | No | `10000` | Maximum diff size in characters |

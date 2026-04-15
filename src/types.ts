@@ -3,6 +3,7 @@ export interface ActionInputs {
   readonly kiroApiKey: string;
   readonly githubToken: string;
   readonly agent: string;
+  readonly model: string;
   readonly prompt: string;
   readonly triggerPhrase: string;
   readonly maxDiffSize: number;

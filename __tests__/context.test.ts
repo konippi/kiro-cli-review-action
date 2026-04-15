@@ -56,6 +56,7 @@ describe('parseInputs', () => {
     expect(inputs.maxDiffSize).toBe(10000);
     expect(inputs.debug).toBe(false);
     expect(inputs.triggerPhrase).toBe('@kiro');
+    expect(inputs.model).toBe('');
   });
 
   it('parses explicit values', () => {
@@ -66,6 +67,7 @@ describe('parseInputs', () => {
         max_diff_size: '5000',
         debug: 'true',
         trigger_phrase: '/review',
+        model: 'anthropic.claude-sonnet-4-20250514',
       };
       return map[name] ?? '';
     });
@@ -74,6 +76,7 @@ describe('parseInputs', () => {
     expect(inputs.maxDiffSize).toBe(5000);
     expect(inputs.debug).toBe(true);
     expect(inputs.triggerPhrase).toBe('/review');
+    expect(inputs.model).toBe('anthropic.claude-sonnet-4-20250514');
   });
 });
 
