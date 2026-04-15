@@ -70,7 +70,6 @@ export async function installKiroCli(): Promise<string> {
   core.info('Installing kiro-cli via official install script...');
   execFileSync('bash', ['-c', 'curl -fsSL https://cli.kiro.dev/install | bash -s -- --force'], {
     stdio: 'inherit',
-    env: { ...process.env },
   });
 
   if (!existsSync(expectedBinary)) {

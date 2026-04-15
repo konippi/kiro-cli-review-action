@@ -27,7 +27,6 @@ export class AcpClient {
     number,
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
-  private reviewText = '';
   private toolCalls: string[] = [];
 
   constructor(
@@ -96,13 +95,12 @@ export class AcpClient {
   }
 
   async prompt(sessionId: string, text: string): Promise<ReviewResult> {
-    this.reviewText = '';
     this.toolCalls = [];
     await this.send('session/prompt', {
       sessionId,
       prompt: [{ type: 'text', text }],
     });
-    return { reviewText: this.reviewText, toolCalls: this.toolCalls };
+    return { toolCalls: this.toolCalls };
   }
 
   kill(): void {
@@ -160,11 +158,6 @@ export class AcpClient {
     if (!update) return;
 
     switch (update.sessionUpdate) {
-      case 'agent_message_chunk': {
-        const text = update.content?.text;
-        if (text) this.reviewText += text;
-        break;
-      }
       case 'tool_call': {
         if (update.title) {
           this.toolCalls.push(update.title);

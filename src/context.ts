@@ -1,7 +1,9 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { GITHUB_MCP_VERSION } from './constants.js';
-import type { ActionInputs, EventContext } from './types.js';
+import type { ActionInputs, CommentContext, EventContext } from './types.js';
+
+const ALLOWED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 export function parseInputs(): ActionInputs {
   return {
@@ -9,13 +11,14 @@ export function parseInputs(): ActionInputs {
     githubToken: core.getInput('github_token') || process.env.GITHUB_TOKEN || '',
     agent: core.getInput('agent'),
     prompt: core.getInput('prompt'),
+    triggerPhrase: core.getInput('trigger_phrase') || '@kiro',
     maxDiffSize: Number.parseInt(core.getInput('max_diff_size') || '10000', 10),
     debug: core.getInput('debug') === 'true',
     githubMcpVersion: core.getInput('github_mcp_version') || GITHUB_MCP_VERSION,
   };
 }
 
-/** Returns null when not in a pull_request event (e.g. workflow_dispatch with prompt). */
+/** Returns null when not in a pull_request event. */
 export function parseEventContext(): EventContext | null {
   const { context } = github;
   const pr = context.payload.pull_request;
@@ -34,6 +37,42 @@ export function parseEventContext(): EventContext | null {
     repo: context.repo.repo,
     prNumber,
     baseBranch,
-    isFork: typeof isFork === 'boolean' ? isFork : false,
+    isFork: typeof isFork === 'boolean' ? isFork : true,
+  };
+}
+
+/**
+ * Parses issue_comment event for comment-triggered review.
+ * Returns null if not a valid trigger (wrong event, not a PR, unauthorized user, or no trigger phrase).
+ */
+export function parseCommentContext(triggerPhrase: string): CommentContext | null {
+  const { context } = github;
+  if (context.eventName !== 'issue_comment') return null;
+
+  const comment = context.payload.comment;
+  const issue = context.payload.issue;
+  if (!comment || !issue) return null;
+
+  // Must be a PR comment (issues have no pull_request field)
+  if (!issue.pull_request) return null;
+
+  const body = typeof comment.body === 'string' ? comment.body : '';
+  const pattern = new RegExp(
+    `(^|\\s)${triggerPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s.,!?;:]|$)`,
+  );
+  if (!pattern.test(body)) return null;
+
+  // Security: only allow trusted users
+  const association =
+    typeof comment.author_association === 'string' ? comment.author_association : '';
+  if (!ALLOWED_ASSOCIATIONS.has(association)) {
+    core.info(`Skipping: author_association=${association} is not allowed`);
+    return null;
+  }
+
+  return {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    prNumber: issue.number as number,
   };
 }

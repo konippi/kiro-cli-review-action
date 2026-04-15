@@ -17,6 +17,9 @@ inputs:
   prompt:
     description: 'Direct prompt to execute. When provided, runs in prompt mode without requiring a PR context.'
     required: false
+  trigger_phrase:
+    description: 'Trigger phrase for comment-based review (e.g. @kiro or /review)'
+    default: '@kiro'
   max_diff_size:
     description: 'Maximum diff size in characters'
     default: '10000'

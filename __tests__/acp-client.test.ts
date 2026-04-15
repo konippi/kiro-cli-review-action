@@ -92,7 +92,7 @@ describe('AcpClient', () => {
     await expect(promise).rejects.toThrow('ACP error -1: fail');
   });
 
-  it('accumulates review text and returns result from prompt', async () => {
+  it('tracks tool calls and returns result from prompt', async () => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
@@ -110,16 +110,15 @@ describe('AcpClient', () => {
 
     const promptP = client.prompt(sessionId, 'review this');
 
-    // Notifications arrive before prompt response
+    // tool_call notification
     sendMessage(
       stdout,
-      '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"looks good"}}}}',
+      '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"tool_call","title":"pull_request_read"}}}',
     );
-    // Prompt response signals turn end
     sendMessage(stdout, '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}');
 
     const result = await promptP;
-    expect(result.reviewText).toBe('looks good');
+    expect(result.toolCalls).toEqual(['pull_request_read']);
   });
 
   it('kills process on kill()', async () => {
@@ -141,6 +140,51 @@ describe('AcpClient', () => {
     await client.start();
 
     stdout.push('not json at all\n');
+
+    const initP = client.initialize();
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
+    await expect(initP).resolves.toBeUndefined();
+  });
+
+  it('rejects pending promises when process exits', async () => {
+    const { proc } = createMockProcess();
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    proc.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(event, handler);
+      return proc;
+    });
+
+    const client = new AcpClient('/usr/bin/kiro-cli', true, 'key');
+    await client.start();
+
+    const initP = client.initialize();
+    handlers.get('exit')?.(1);
+
+    await expect(initP).rejects.toThrow('ACP process exited with code 1');
+  });
+
+  it('throws when createSession response has no sessionId', async () => {
+    const { proc, stdout } = createMockProcess();
+    proc.on.mockImplementation(() => proc);
+
+    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+    await client.start();
+
+    const sessP = client.createSession('/bin/mcp', 'token');
+    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
+
+    await expect(sessP).rejects.toThrow('session/new response missing sessionId');
+  });
+
+  it('ignores session/update with no update field', async () => {
+    const { proc, stdout } = createMockProcess();
+    proc.on.mockImplementation(() => proc);
+
+    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+    await client.start();
+
+    // Notification with no update field — should not throw
+    sendMessage(stdout, '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1"}}');
 
     const initP = client.initialize();
     sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
