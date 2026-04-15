@@ -14,7 +14,7 @@ We aim to respond within 48 hours and release a fix within 7 days for critical i
 
 ### Threat: Malicious PR Config Injection
 
-PR authors can modify `.kiro/`, `.mcp.json`, `.gitmodules`, and `.husky` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution.
+PR authors can modify `.kiro/`, `.amazonq/`, `.gitmodules`, and `.husky` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution.
 
 **References:** CVE-2025-59536, CVE-2026-21852 (Claude Code equivalent vulnerabilities)
 
