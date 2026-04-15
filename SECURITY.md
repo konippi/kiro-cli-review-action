@@ -14,7 +14,7 @@ We aim to respond within 48 hours and release a fix within 7 days for critical i
 
 ### Threat: Malicious PR Config Injection
 
-PR authors can modify `.kiro/`, `.amazonq/`, `.gitmodules`, and `.husky` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution.
+PR authors can modify `.kiro/`, `.amazonq/`, `.gitmodules`, `.husky`, and `AGENTS.md` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution.
 
 **References:** CVE-2025-59536, CVE-2026-21852 (Claude Code equivalent vulnerabilities)
 
@@ -24,16 +24,22 @@ PR diffs are untrusted input. The review agent's system prompt explicitly instru
 
 ### Threat: Fork PR Secret Exfiltration
 
-This action uses `pull_request` trigger only. Fork PRs receive a read-only `GITHUB_TOKEN` with no access to repository secrets.
+Fork PRs are automatically skipped — secrets are unavailable in `pull_request` workflows triggered from forks. The `isFork` check in the action provides an additional early return.
 
 **⚠️ `pull_request_target` is NOT supported and MUST NOT be used.** It grants fork PRs access to secrets, enabling exfiltration attacks (ref: GhostAction campaign, tj-actions/changed-files CVE-2025-30066).
+
+### Threat: Comment Trigger Abuse
+
+Comment-triggered reviews (`@kiro`) are restricted to trusted users (OWNER, MEMBER, COLLABORATOR `author_association`). User request text is sanitized to mitigate prompt injection: HTML comments, invisible/bidi characters, HTML entities, angle brackets, and markdown image alt text are stripped. Input is truncated to 2048 characters and wrapped in XML delimiters marked as untrusted.
+
+Bot comments are ignored to prevent infinite loops. Only `created` action is processed (not edits/deletes).
 
 ### Threat: Supply Chain Attack
 
 - All GitHub Actions in CI workflows are pinned by commit SHA (not tags)
 - github-mcp-server binary is version-pinned. kiro-cli is installed via the official script with SHA256 checksum verification
 - `.npmrc` enforces `ignore-scripts=true`, `save-exact=true`, and `min-release-age=1`
-- `actions/checkout` uses `persist-credentials: false`
+- CI workflows use `persist-credentials: false` for `actions/checkout`
 
 ## Supported Versions
 
