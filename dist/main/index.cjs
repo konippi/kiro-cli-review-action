@@ -23907,14 +23907,7 @@ function getOctokit(token, options, ...additionalPlugins) {
 
 // src/constants.ts
 var GITHUB_MCP_VERSION = "0.32.0";
-var SENSITIVE_PATHS = [
-  ".kiro",
-  ".mcp.json",
-  ".amazonq",
-  ".gitmodules",
-  ".husky",
-  "AGENTS.md"
-];
+var SENSITIVE_PATHS = [".kiro", ".amazonq", ".gitmodules", ".husky", "AGENTS.md"];
 
 // src/context.ts
 function parseInputs() {
