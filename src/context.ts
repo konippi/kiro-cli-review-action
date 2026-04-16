@@ -1,6 +1,5 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { GITHUB_MCP_VERSION } from './constants.js';
 import { extractUserRequest, sanitizeComment } from './sanitize.js';
 import type { ActionInputs, CommentContext, EventContext } from './types.js';
 
@@ -16,7 +15,7 @@ export function parseInputs(): ActionInputs {
     triggerPhrase: core.getInput('trigger_phrase') || '@kiro',
     maxDiffSize: Number.parseInt(core.getInput('max_diff_size') || '10000', 10),
     debug: core.getInput('debug') === 'true',
-    githubMcpVersion: core.getInput('github_mcp_version') || GITHUB_MCP_VERSION,
+    githubMcpVersion: core.getInput('github_mcp_version'),
   };
 }
 

@@ -20041,6 +20041,9 @@ var AcpClient = class {
       stdio: ["pipe", "pipe", this.debug ? "inherit" : "pipe"],
       env: { ...process.env, KIRO_API_KEY: this.kiroApiKey }
     });
+    if (!this.debug) {
+      this.proc.stderr?.resume();
+    }
     this.proc.on("error", (err) => error(`ACP process error: ${err.message}`));
     this.proc.on("exit", (code) => {
       if (this.debug) info(`ACP process exited with code ${code}`);
@@ -20139,15 +20142,11 @@ var AcpClient = class {
   }
   handleUpdate(params) {
     const update = params.update;
-    if (!update) return;
-    switch (update.sessionUpdate) {
-      case "tool_call": {
-        if (update.title) {
-          this.toolCalls.push(update.title);
-          info(`Tool call: ${update.title}`);
-        }
-        break;
-      }
+    if (typeof update !== "object" || update === null) return;
+    const u = update;
+    if (u.sessionUpdate === "tool_call" && typeof u.title === "string" && u.title !== "") {
+      this.toolCalls.push(u.title);
+      info(`Tool call: ${u.title}`);
     }
   }
 };
@@ -23905,7 +23904,6 @@ function getOctokit(token, options, ...additionalPlugins) {
 }
 
 // src/constants.ts
-var GITHUB_MCP_VERSION = "0.32.0";
 var SENSITIVE_PATHS = [".kiro", ".amazonq", ".gitmodules", ".husky", "AGENTS.md"];
 var MAX_USER_REQUEST_LENGTH = 2048;
 
@@ -23944,7 +23942,7 @@ function parseInputs() {
     triggerPhrase: getInput("trigger_phrase") || "@kiro",
     maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
     debug: getInput("debug") === "true",
-    githubMcpVersion: getInput("github_mcp_version") || GITHUB_MCP_VERSION
+    githubMcpVersion: getInput("github_mcp_version")
   };
 }
 function parseEventContext() {
