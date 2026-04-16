@@ -48,6 +48,10 @@ export class AcpClient {
       env: { ...process.env, KIRO_API_KEY: this.kiroApiKey },
     });
 
+    if (!this.debug) {
+      this.proc.stderr?.resume();
+    }
+
     this.proc.on('error', (err) => core.error(`ACP process error: ${err.message}`));
     this.proc.on('exit', (code) => {
       if (this.debug) core.info(`ACP process exited with code ${code}`);
@@ -153,19 +157,12 @@ export class AcpClient {
   }
 
   private handleUpdate(params: Record<string, unknown>): void {
-    const update = params.update as
-      | { sessionUpdate?: string; content?: { text?: string }; title?: string }
-      | undefined;
-    if (!update) return;
-
-    switch (update.sessionUpdate) {
-      case 'tool_call': {
-        if (update.title) {
-          this.toolCalls.push(update.title);
-          core.info(`Tool call: ${update.title}`);
-        }
-        break;
-      }
+    const update = params.update;
+    if (typeof update !== 'object' || update === null) return;
+    const u = update as Record<string, unknown>;
+    if (u.sessionUpdate === 'tool_call' && typeof u.title === 'string' && u.title !== '') {
+      this.toolCalls.push(u.title);
+      core.info(`Tool call: ${u.title}`);
     }
   }
 }
