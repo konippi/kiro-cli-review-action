@@ -1,5 +1,3 @@
-export const GITHUB_MCP_VERSION = '0.32.0';
-
 /**
  * Paths that are PR-controllable and read by kiro-cli at startup.
  * Restored from base branch before kiro-cli execution to prevent
