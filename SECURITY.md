@@ -34,15 +34,6 @@ Comment-triggered reviews (`@kiro`) are restricted to trusted users (OWNER, MEMB
 
 Bot comments are ignored to prevent infinite loops. Only `created` action is processed (not edits/deletes).
 
-### Threat: Supply Chain Attack
-
-- All GitHub Actions in CI workflows are pinned by commit SHA (not tags)
-- github-mcp-server binary is version-pinned. kiro-cli is installed via the official script with SHA256 checksum verification
-- `.npmrc` enforces `ignore-scripts=true`, `save-exact=true`, and `min-release-age=1`
-- CI workflows use `persist-credentials: false` for `actions/checkout`
-
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.x     | ✅        |
+Only the latest release is supported with security updates.
