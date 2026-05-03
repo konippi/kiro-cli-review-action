@@ -13,7 +13,7 @@ interface JsonRpcRequest {
 
 interface JsonRpcMessage {
   jsonrpc: string;
-  id?: number;
+  id?: number | string;
   method?: string;
   params?: Record<string, unknown>;
   result?: unknown;
@@ -138,7 +138,24 @@ export class AcpClient {
       return;
     }
 
-    if (msg.id !== undefined) {
+    // Auto-approve tool permission requests in CI (must be before id check)
+    if (msg.method === 'session/request_permission' && msg.id !== undefined) {
+      const options = Array.isArray(msg.params?.options) ? msg.params.options : [];
+      const opt = options.find((o) => typeof o === 'object' && o !== null && o.kind === 'allow_always');
+      const sessionId = msg.params?.sessionId;
+      if (opt && sessionId) {
+        // Try both response formats: JSON-RPC result and method call
+        const response = JSON.stringify({ jsonrpc: '2.0', result: { optionId: opt.optionId }, id: msg.id });
+        const methodCall = JSON.stringify({ jsonrpc: '2.0', id: this.nextId++, method: 'session/resolve_permission', params: { sessionId, optionId: opt.optionId } });
+        if (this.debug) core.info(`ACP → ${response} (auto-approve response)`);
+        if (this.debug) core.info(`ACP → ${methodCall} (auto-approve method)`);
+        this.proc?.stdin?.write(`${response}\n`);
+        this.proc?.stdin?.write(`${methodCall}\n`);
+      }
+      return;
+    }
+
+    if (typeof msg.id === 'number') {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
