@@ -167,15 +167,13 @@ describe('parseCommentContext', () => {
     expect(parseCommentContext('@kiro')).toBeNull();
   });
 
-  it.each([
-    'NONE',
-    'FIRST_TIMER',
-    'FIRST_TIME_CONTRIBUTOR',
-    'CONTRIBUTOR',
-  ])('rejects untrusted author_association: %s', (assoc) => {
-    setCommentPayload({ association: assoc });
-    expect(parseCommentContext('@kiro')).toBeNull();
-  });
+  it.each(['NONE', 'FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR', 'CONTRIBUTOR'])(
+    'rejects untrusted author_association: %s',
+    (assoc) => {
+      setCommentPayload({ association: assoc });
+      expect(parseCommentContext('@kiro')).toBeNull();
+    },
+  );
 
   it('returns null when payload is missing comment or issue', () => {
     ctx.eventName = 'issue_comment';

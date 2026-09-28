@@ -27,14 +27,12 @@ beforeEach(() => {
 });
 
 describe('restoreConfigFromBase', () => {
-  it.each([
-    'main; rm -rf /',
-    '',
-    '$(whoami)',
-    '../../etc',
-  ])('throws on invalid branch name: %s', (branch) => {
-    expect(() => restoreConfigFromBase(branch)).toThrow('Invalid branch name');
-  });
+  it.each(['main; rm -rf /', '', '$(whoami)', '../../etc'])(
+    'throws on invalid branch name: %s',
+    (branch) => {
+      expect(() => restoreConfigFromBase(branch)).toThrow('Invalid branch name');
+    },
+  );
 
   it('fetches from base branch with --no-recurse-submodules', () => {
     restoreConfigFromBase('feature/my-branch.1');
