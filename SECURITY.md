@@ -14,7 +14,7 @@ We aim to respond within 48 hours and release a fix within 7 days for critical i
 
 ### Threat: Malicious PR Config Injection
 
-PR authors can modify `.kiro/`, `.amazonq/`, `.gitmodules`, `.husky`, and `AGENTS.md` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution.
+PR authors can modify `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, and `AmazonQ.md` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution, in both PR and comment modes.
 
 **References:** CVE-2025-59536, CVE-2026-21852 (Claude Code equivalent vulnerabilities)
 
@@ -30,9 +30,9 @@ Fork PRs are automatically skipped — secrets are unavailable in `pull_request`
 
 ### Threat: Comment Trigger Abuse
 
-Comment-triggered reviews (`@kiro`) are restricted to trusted users (OWNER, MEMBER, COLLABORATOR `author_association`). User request text is sanitized to mitigate prompt injection: HTML comments, invisible/bidi characters, HTML entities, angle brackets, and markdown image alt text are stripped. Input is truncated to 2048 characters and wrapped in XML delimiters marked as untrusted.
+Comment-triggered reviews (`@kiro`) are restricted to users with write access (verified via the GitHub API). Bot comments and edits are ignored. User request text is sanitized, truncated to 2048 characters, and marked as untrusted.
 
-Bot comments are ignored to prevent infinite loops. Only `created` action is processed (not edits/deletes).
+A trusted comment on a fork PR checks out the fork's code; only trigger reviews on fork PRs you trust.
 
 ## Supported Versions
 

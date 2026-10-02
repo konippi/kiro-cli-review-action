@@ -17,6 +17,7 @@ export interface EventContext {
   readonly repo: string;
   readonly prNumber: number;
   readonly baseBranch: string;
+  readonly headSha: string;
   readonly isFork: boolean;
 }
 
@@ -24,6 +25,7 @@ export interface CommentContext {
   readonly owner: string;
   readonly repo: string;
   readonly prNumber: number;
+  readonly commenterLogin: string;
   readonly userRequest: string | null;
 }
 
