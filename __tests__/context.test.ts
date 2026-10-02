@@ -45,6 +45,7 @@ function setCommentPayload(
     userType?: string;
     login?: string;
     omitLogin?: boolean;
+    omitId?: boolean;
     omitNumber?: boolean;
   } = {},
 ): void {
@@ -52,6 +53,7 @@ function setCommentPayload(
   ctx.payload = {
     action: options.action ?? 'created',
     comment: {
+      ...(options.omitId ? {} : { id: 1234 }),
       body: options.body ?? '@kiro review this',
       author_association: 'NONE',
       user: {
@@ -120,6 +122,7 @@ describe('parseCommentContext', () => {
       owner: 'test-owner',
       repo: 'test-repo',
       prNumber: 10,
+      commentId: 1234,
       commenterLogin: 'trusted-user',
       userRequest: 'review this',
     });
@@ -130,6 +133,11 @@ describe('parseCommentContext', () => {
   });
 
   it.each([
+    {
+      name: 'comment id',
+      options: { omitId: true },
+      message: 'Unexpected issue_comment payload: comment.id is missing',
+    },
     {
       name: 'commenter login',
       options: { omitLogin: true },
