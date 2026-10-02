@@ -2,43 +2,113 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { AcpClient } from './acp-client.js';
-import { parseCommentContext, parseEventContext, parseInputs } from './context.js';
-import { restoreConfigFromBase } from './security.js';
+import {
+  authorizeCommentTrigger,
+  fetchCommentPullRequest,
+  parseCommentContext,
+  parseEventContext,
+  parseInputs,
+} from './context.js';
+import { buildGitAuthEnv, checkoutPullRequestHead } from './git.js';
+import { restoreConfigFromBase } from './restore-config.js';
 import { installGithubMcpServer, installKiroCli } from './setup.js';
+import type { ActionInputs, CommentContext, EventContext } from './types.js';
+
+function setSkip(): void {
+  core.setOutput('review_result', 'skip');
+  core.setOutput('exit_code', '0');
+}
+
+function setFailure(message: string): void {
+  core.setFailed(message);
+  core.setOutput('review_result', 'fail');
+  core.setOutput('exit_code', '1');
+}
+
+// Resolve the PR to review, then authorize and prepare its workspace.
+async function prepareReviewTarget(
+  inputs: ActionInputs,
+  event: EventContext | null,
+  comment: CommentContext | null,
+): Promise<EventContext | null> {
+  if (inputs.prompt) return null;
+
+  let target = event;
+
+  if (event) {
+    core.info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
+  } else if (comment) {
+    core.info(
+      `Comment-triggered review for PR #${comment.prNumber} in ${comment.owner}/${comment.repo}`,
+    );
+
+    if (!inputs.githubToken) {
+      throw new Error('github_token is required for comment-triggered reviews');
+    }
+
+    await authorizeCommentTrigger(
+      comment.owner,
+      comment.repo,
+      comment.commenterLogin,
+      inputs.githubToken,
+    );
+    target = await fetchCommentPullRequest(
+      comment.owner,
+      comment.repo,
+      comment.prNumber,
+      inputs.githubToken,
+    );
+
+    if (target.isFork) {
+      core.warning(
+        "A fork PR's code will be checked out for this trusted comment-triggered review.",
+      );
+    }
+  }
+
+  if (target) {
+    await checkoutPullRequestHead(target.headSha, inputs.githubToken);
+    await restoreConfigFromBase(
+      target.baseBranch,
+      buildGitAuthEnv(process.env, inputs.githubToken),
+    );
+  }
+
+  return target;
+}
 
 async function run(): Promise<void> {
+  const event = parseEventContext();
+  if (event?.isFork) {
+    core.warning('Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
+    setSkip();
+    return;
+  }
+
   const inputs = parseInputs();
   core.setSecret(inputs.kiroApiKey);
   if (inputs.githubToken) core.setSecret(inputs.githubToken);
 
   // Determine mode: PR event, comment trigger, or direct prompt
-  const event = parseEventContext();
   const comment = parseCommentContext(inputs.triggerPhrase);
 
   if (!inputs.prompt && !event && !comment) {
     core.info('No matching trigger — skipping.');
-    core.setOutput('review_result', 'skip');
-    core.setOutput('exit_code', '0');
+    setSkip();
     return;
   }
 
-  // Derive PR info from event or comment context
-  const prNumber = event?.prNumber ?? comment?.prNumber;
-  const owner = event?.owner ?? comment?.owner ?? '';
-  const repo = event?.repo ?? comment?.repo ?? '';
-
-  if (event) {
-    core.info(`Reviewing PR #${event.prNumber} in ${owner}/${repo}`);
-    if (event.isFork) {
-      core.warning('Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
-      core.setOutput('review_result', 'skip');
-      core.setOutput('exit_code', '0');
-      return;
-    }
-    restoreConfigFromBase(event.baseBranch);
-  } else if (comment) {
-    core.info(`Comment-triggered review for PR #${comment.prNumber} in ${owner}/${repo}`);
+  let target: EventContext | null;
+  try {
+    target = await prepareReviewTarget(inputs, event, comment);
+  } catch (error: unknown) {
+    setFailure(error instanceof Error ? error.message : String(error));
+    return;
   }
+
+  const prNumber = target?.prNumber;
+  const owner = target?.owner ?? '';
+  const repo = target?.repo ?? '';
 
   // Install binaries
   const installDir = join(process.env.RUNNER_TEMP || '/tmp', 'kiro-review');
@@ -57,11 +127,11 @@ async function run(): Promise<void> {
       const source = existsSync(dest) ? dest : join(actionPath, 'agents', 'code-reviewer.json');
       let config: Record<string, unknown>;
       try {
-        config = JSON.parse(readFileSync(source, 'utf-8')) as Record<string, unknown>;
+        config = JSON.parse(readFileSync(source, 'utf-8'));
       } catch {
         config = JSON.parse(
           readFileSync(join(actionPath, 'agents', 'code-reviewer.json'), 'utf-8'),
-        ) as Record<string, unknown>;
+        );
       }
       mkdirSync(agentDir, { recursive: true });
       config.model = inputs.model;
@@ -105,14 +175,15 @@ async function run(): Promise<void> {
     core.info(`Complete. Tool calls: ${result.toolCalls.length}`);
     core.setOutput('review_result', 'pass');
     core.setOutput('exit_code', '0');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    core.setFailed(message);
-    core.setOutput('review_result', 'fail');
-    core.setOutput('exit_code', '1');
+  } catch (error: unknown) {
+    setFailure(error instanceof Error ? error.message : String(error));
   } finally {
     acp.kill();
   }
+}
+
+function isFileNotFoundError(error: unknown): error is Error & { code: string } {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 function buildReviewPrompt(
@@ -123,8 +194,8 @@ function buildReviewPrompt(
   let systemPrompt = '';
   try {
     systemPrompt = readFileSync(join(actionPath, 'prompts', 'review.md'), 'utf-8');
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  } catch (error: unknown) {
+    if (!isFileNotFoundError(error)) throw error;
     systemPrompt = 'You are an expert code reviewer. Focus on bugs, security, and maintainability.';
   }
 
@@ -138,5 +209,5 @@ function buildReviewPrompt(
 }
 
 export default run().catch((error: unknown) => {
-  core.setFailed(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
+  setFailure(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
 });

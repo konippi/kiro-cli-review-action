@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: konippi/kiro-cli-review-action@v1
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
@@ -67,20 +69,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || '' }}
+          persist-credentials: false
       - uses: konippi/kiro-cli-review-action@v1
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
 
-The action handles all event filtering internally — only PR comments containing `@kiro` from trusted users (OWNER, MEMBER, COLLABORATOR) are processed. Non-matching events exit immediately without consuming API credits.
+The action handles all event filtering internally — only PR comments containing `@kiro` from users with write access are processed. Non-matching events exit immediately without consuming API credits.
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `kiro_api_key` | Yes | — | Kiro CLI API key ([Kiro Pro/Pro+/Power](https://kiro.dev) subscription required) |
-| `github_token` | No | `GITHUB_TOKEN` env | GitHub token for MCP Server and PR comments |
+| `github_token` | No | `${{ github.token }}` | GitHub token for PR checkout, PR metadata, and the GitHub MCP server |
 | `agent` | No | bundled `code-reviewer` | Custom agent name |
 | `model` | No | Kiro CLI default | Model ID for Kiro CLI (ignored when `agent` is specified) |
 | `prompt` | No | — | Direct prompt to execute without PR context |
@@ -100,7 +102,7 @@ The action handles all event filtering internally — only PR comments containin
 
 Place `.kiro/agents/code-reviewer.json` in your repository (on the default branch) to override the default agent configuration.
 
-> **Note**: Only configurations merged to the base branch take effect. PR-authored changes to `.kiro/` are ignored for security.
+> **Note**: Only files merged to the base branch take effect. PR-authored changes to `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, and `AmazonQ.md` are restored from the base branch before the review runs.
 
 ## License
 

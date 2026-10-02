@@ -6,11 +6,14 @@ vi.mock('@actions/core', () => ({
   error: vi.fn(),
 }));
 
-vi.mock('node:child_process', () => ({
+const childProcessMocks = vi.hoisted(() => ({
   spawn: vi.fn(),
 }));
 
-import { spawn } from 'node:child_process';
+vi.mock('node:child_process', () => ({
+  spawn: childProcessMocks.spawn,
+}));
+
 import { AcpClient } from '../src/acp-client.js';
 
 function sendMessage(stdout: PassThrough, json: string): void {
@@ -29,7 +32,7 @@ function createMockProcess() {
     on: vi.fn(),
     kill: vi.fn(),
   };
-  vi.mocked(spawn).mockReturnValue(proc as never);
+  childProcessMocks.spawn.mockReturnValue(proc);
   return { proc, stdin, stdout };
 }
 
@@ -41,7 +44,7 @@ describe('AcpClient', () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'test-api-key');
     await client.start();
 
-    expect(spawn).toHaveBeenCalledWith('/usr/bin/kiro-cli', ['acp'], {
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith('/usr/bin/kiro-cli', ['acp'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: expect.objectContaining({ KIRO_API_KEY: 'test-api-key' }),
     });
@@ -54,7 +57,7 @@ describe('AcpClient', () => {
     const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
     await client.start('my-agent');
 
-    expect(spawn).toHaveBeenCalledWith(
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith(
       '/usr/bin/kiro-cli',
       ['acp', '--agent', 'my-agent'],
       expect.any(Object),

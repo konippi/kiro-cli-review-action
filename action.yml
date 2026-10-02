@@ -9,8 +9,9 @@ inputs:
     description: 'Kiro CLI API key'
     required: true
   github_token:
-    description: 'GitHub token for MCP Server and PR comments'
+    description: 'GitHub token for PR checkout, PR metadata, and the GitHub MCP server'
     required: false
+    default: ${{ github.token }}
   agent:
     description: 'Custom agent name (defaults to bundled code-reviewer)'
     required: false

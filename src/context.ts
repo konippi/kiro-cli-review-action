@@ -3,7 +3,11 @@ import * as github from '@actions/github';
 import { extractUserRequest, sanitizeComment } from './sanitize.js';
 import type { ActionInputs, CommentContext, EventContext } from './types.js';
 
-const ALLOWED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+const WRITE_PERMISSIONS = new Set(['admin', 'write']);
+
+function detectFork(headRepo: string | undefined, baseRepo: string | undefined): boolean {
+  return !headRepo || !baseRepo || headRepo !== baseRepo;
+}
 
 export function parseInputs(): ActionInputs {
   return {
@@ -26,11 +30,15 @@ export function parseEventContext(): EventContext | null {
   if (!pr) return null;
 
   const baseBranch = pr.base?.ref;
+  const headSha = pr.head?.sha;
   const prNumber = pr.number;
-  const isFork = pr.head?.repo?.fork;
 
-  if (typeof baseBranch !== 'string' || typeof prNumber !== 'number') {
-    throw new Error('Unexpected pull_request payload: missing base.ref or number');
+  if (
+    typeof baseBranch !== 'string' ||
+    typeof headSha !== 'string' ||
+    typeof prNumber !== 'number'
+  ) {
+    throw new Error('Unexpected pull_request payload: missing base.ref, head.sha, or number');
   }
 
   return {
@@ -38,13 +46,14 @@ export function parseEventContext(): EventContext | null {
     repo: context.repo.repo,
     prNumber,
     baseBranch,
-    isFork: typeof isFork === 'boolean' ? isFork : true,
+    headSha,
+    isFork: detectFork(pr.head?.repo?.full_name, pr.base?.repo?.full_name),
   };
 }
 
 /**
  * Parses issue_comment event for comment-triggered review.
- * Returns null if not a valid trigger (wrong event, not a PR, unauthorized user, or no trigger phrase).
+ * Authorization is performed via the GitHub API by authorizeCommentTrigger.
  */
 export function parseCommentContext(triggerPhrase: string): CommentContext | null {
   const { context } = github;
@@ -69,12 +78,12 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   );
   if (!pattern.test(body)) return null;
 
-  // Security: only allow trusted users
-  const association =
-    typeof comment.author_association === 'string' ? comment.author_association : '';
-  if (!ALLOWED_ASSOCIATIONS.has(association)) {
-    core.info(`Skipping: author_association=${association} is not allowed`);
-    return null;
+  const prNumber = issue.number;
+  if (typeof prNumber !== 'number') return null;
+
+  const commenterLogin = comment.user?.login;
+  if (typeof commenterLogin !== 'string' || commenterLogin === '') {
+    throw new Error('Unexpected issue_comment payload: comment.user.login is missing');
   }
 
   const raw = extractUserRequest(body, triggerPhrase);
@@ -83,7 +92,82 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   return {
     owner: context.repo.owner,
     repo: context.repo.repo,
-    prNumber: issue.number as number,
+    prNumber,
+    commenterLogin,
     userRequest,
+  };
+}
+
+function isNotFoundError(error: unknown): error is { status: number } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    typeof error.status === 'number' &&
+    error.status === 404
+  );
+}
+
+/** Verifies that the commenter has repository write access. */
+export async function authorizeCommentTrigger(
+  owner: string,
+  repo: string,
+  username: string,
+  token: string,
+): Promise<void> {
+  let permission: string;
+
+  try {
+    const octokit = github.getOctokit(token);
+    const response = await octokit.rest.repos.getCollaboratorPermissionLevel({
+      owner,
+      repo,
+      username,
+    });
+    permission = response.data.permission;
+  } catch (error: unknown) {
+    if (isNotFoundError(error)) {
+      throw new Error(
+        `Commenter ${username} is not a collaborator on ${owner}/${repo}; write access is required`,
+      );
+    }
+
+    throw new Error(`Failed to verify write access for commenter ${username}`, { cause: error });
+  }
+
+  // The permission field maps maintain to write and triage to read.
+  if (WRITE_PERMISSIONS.has(permission)) {
+    core.info(`Commenter ${username} has ${permission} access`);
+    return;
+  }
+
+  throw new Error(
+    `Commenter ${username} must have write access to ${owner}/${repo}; detected permission: ${permission}`,
+  );
+}
+
+/** Fetches authoritative pull request metadata for an issue comment event. */
+export async function fetchCommentPullRequest(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  token: string,
+): Promise<EventContext> {
+  const octokit = github.getOctokit(token);
+  const response = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
+  const pr = response.data;
+  const baseBranch = pr.base?.ref;
+  const headSha = pr.head?.sha;
+  if (typeof baseBranch !== 'string' || typeof headSha !== 'string') {
+    throw new Error('Unexpected pull request response: missing base.ref or head.sha');
+  }
+
+  return {
+    owner,
+    repo,
+    prNumber,
+    baseBranch,
+    headSha,
+    isFork: detectFork(pr.head?.repo?.full_name, pr.base?.repo?.full_name),
   };
 }
