@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import type { CommentContext, PullRequestTarget } from './context.js';
-import { authorizeCommentTrigger, fetchCommentPullRequest } from './github.js';
+import { acknowledgeComment, authorizeCommentTrigger, fetchCommentPullRequest } from './github.js';
 import type { ActionInputs } from './inputs.js';
 
 /** Review mode resolved from inputs and event context. */
@@ -13,7 +13,7 @@ export type ReviewMode =
       readonly userRequest: string | null;
     };
 
-/** Resolves the review mode, authorizing comment triggers via the GitHub API. */
+/** Resolves the review mode, authorizing and acknowledging comment triggers via the GitHub API. */
 export async function resolveReviewMode(
   inputs: ActionInputs,
   event: PullRequestTarget | null,
@@ -47,6 +47,8 @@ export async function resolveReviewMode(
       comment.prNumber,
       inputs.githubToken,
     );
+
+    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
 
     if (target.isFork) {
       core.warning(

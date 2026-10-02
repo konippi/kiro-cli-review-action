@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const githubMocks = vi.hoisted(() => ({
+  acknowledgeComment: vi.fn(),
   authorizeCommentTrigger: vi.fn(),
   fetchCommentPullRequest: vi.fn(),
 }));
@@ -12,6 +13,7 @@ vi.mock('@actions/core', () => ({
 }));
 
 vi.mock('../src/github.js', () => ({
+  acknowledgeComment: githubMocks.acknowledgeComment,
   authorizeCommentTrigger: githubMocks.authorizeCommentTrigger,
   fetchCommentPullRequest: githubMocks.fetchCommentPullRequest,
 }));
@@ -42,6 +44,7 @@ const comment = {
   owner: 'test-owner',
   repo: 'test-repo',
   prNumber: 10,
+  commentId: 1234,
   commenterLogin: 'trusted-user',
   userRequest: 'focus on authentication',
 };
@@ -77,6 +80,16 @@ describe('resolveReviewMode', () => {
     );
 
     expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
+    expect(githubMocks.acknowledgeComment).not.toHaveBeenCalled();
+  });
+
+  it('rejects when comment authorization fails without fetching or acknowledging', async () => {
+    githubMocks.authorizeCommentTrigger.mockRejectedValueOnce(new Error('denied'));
+
+    await expect(resolveReviewMode(inputs, null, comment)).rejects.toThrow('denied');
+
+    expect(githubMocks.fetchCommentPullRequest).not.toHaveBeenCalled();
+    expect(githubMocks.acknowledgeComment).not.toHaveBeenCalled();
   });
 
   it('authorizes before fetching and returns comment mode with the user request', async () => {
@@ -88,13 +101,22 @@ describe('resolveReviewMode', () => {
       calls.push('fetch');
       return { ...target, prNumber: 10 };
     });
+    githubMocks.acknowledgeComment.mockImplementationOnce(async () => {
+      calls.push('acknowledge');
+    });
 
     await expect(resolveReviewMode(inputs, null, comment)).resolves.toEqual({
       kind: 'comment',
       target: { ...target, prNumber: 10 },
       userRequest: 'focus on authentication',
     });
-    expect(calls).toEqual(['authorize', 'fetch']);
+    expect(calls).toEqual(['authorize', 'fetch', 'acknowledge']);
+    expect(githubMocks.acknowledgeComment).toHaveBeenCalledWith(
+      'test-owner',
+      'test-repo',
+      1234,
+      'github-token',
+    );
   });
 
   it('warns when the fetched comment target is a fork', async () => {

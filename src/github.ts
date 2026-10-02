@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import { getOctokit } from '@actions/github';
 import { detectFork, type PullRequestTarget } from './context.js';
+import { toErrorMessage } from './errors.js';
 
 const WRITE_PERMISSIONS = new Set(['admin', 'write']);
 
@@ -12,6 +13,28 @@ function isNotFoundError(error: unknown): error is { status: number } {
     typeof error.status === 'number' &&
     error.status === 404
   );
+}
+
+/** Reacts to the triggering comment; failures are logged and never fail the review. */
+export async function acknowledgeComment(
+  owner: string,
+  repo: string,
+  commentId: number,
+  token: string,
+): Promise<void> {
+  try {
+    const octokit = getOctokit(token);
+    await octokit.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content: 'eyes',
+    });
+  } catch (error: unknown) {
+    core.warning(
+      `Failed to react to comment ${commentId} on ${owner}/${repo}: ${toErrorMessage(error)}`,
+    );
+  }
 }
 
 /** Verifies that the commenter has repository write access. */

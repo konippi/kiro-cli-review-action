@@ -16,6 +16,7 @@ export interface CommentContext {
   readonly owner: string;
   readonly repo: string;
   readonly prNumber: number;
+  readonly commentId: number;
   readonly commenterLogin: string;
   readonly userRequest: string | null;
 }
@@ -80,6 +81,11 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
     throw new Error('Unexpected issue_comment payload: issue.number is missing');
   }
 
+  const commentId = comment.id;
+  if (typeof commentId !== 'number') {
+    throw new Error('Unexpected issue_comment payload: comment.id is missing');
+  }
+
   const commenterLogin = comment.user?.login;
   if (typeof commenterLogin !== 'string' || commenterLogin === '') {
     throw new Error('Unexpected issue_comment payload: comment.user.login is missing');
@@ -92,6 +98,7 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
     owner: context.repo.owner,
     repo: context.repo.repo,
     prNumber,
+    commentId,
     commenterLogin,
     userRequest,
   };

@@ -4,35 +4,72 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const githubMocks = vi.hoisted(() => {
   const getCollaboratorPermissionLevel = vi.fn();
   const pullsGet = vi.fn();
+  const createForIssueComment = vi.fn();
 
   return {
     getCollaboratorPermissionLevel,
     pullsGet,
+    createForIssueComment,
     getOctokit: vi.fn(() => ({
       rest: {
         repos: { getCollaboratorPermissionLevel },
         pulls: { get: pullsGet },
+        reactions: { createForIssueComment },
       },
     })),
   };
 });
 
-const { getCollaboratorPermissionLevel, pullsGet } = githubMocks;
+const { createForIssueComment, getCollaboratorPermissionLevel, pullsGet } = githubMocks;
 
 vi.mock('@actions/core', () => ({
   info: vi.fn(),
+  warning: vi.fn(),
 }));
 
 vi.mock('@actions/github', () => ({
   getOctokit: githubMocks.getOctokit,
 }));
 
-import { authorizeCommentTrigger, fetchCommentPullRequest } from '../src/github.js';
+import {
+  acknowledgeComment,
+  authorizeCommentTrigger,
+  fetchCommentPullRequest,
+} from '../src/github.js';
 
 const sha = '0123456789abcdef0123456789abcdef01234567';
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('acknowledgeComment', () => {
+  it('adds an eyes reaction to the triggering comment', async () => {
+    await expect(
+      acknowledgeComment('test-owner', 'test-repo', 1234, 'token'),
+    ).resolves.toBeUndefined();
+
+    expect(githubMocks.getOctokit).toHaveBeenCalledWith('token');
+    expect(createForIssueComment).toHaveBeenCalledWith({
+      owner: 'test-owner',
+      repo: 'test-repo',
+      comment_id: 1234,
+      content: 'eyes',
+    });
+    expect(core.warning).not.toHaveBeenCalled();
+  });
+
+  it('warns instead of failing when the reaction request fails', async () => {
+    createForIssueComment.mockRejectedValueOnce(new Error('rate limited'));
+
+    await expect(
+      acknowledgeComment('test-owner', 'test-repo', 1234, 'token'),
+    ).resolves.toBeUndefined();
+
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('1234'));
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('test-owner/test-repo'));
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('rate limited'));
+  });
 });
 
 describe('authorizeCommentTrigger', () => {

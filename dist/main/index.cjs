@@ -24010,6 +24010,10 @@ function parseCommentContext(triggerPhrase) {
   if (typeof prNumber !== "number") {
     throw new Error("Unexpected issue_comment payload: issue.number is missing");
   }
+  const commentId = comment.id;
+  if (typeof commentId !== "number") {
+    throw new Error("Unexpected issue_comment payload: comment.id is missing");
+  }
   const commenterLogin = comment.user?.login;
   if (typeof commenterLogin !== "string" || commenterLogin === "") {
     throw new Error("Unexpected issue_comment payload: comment.user.login is missing");
@@ -24020,6 +24024,7 @@ function parseCommentContext(triggerPhrase) {
     owner: context2.repo.owner,
     repo: context2.repo.repo,
     prNumber,
+    commentId,
     commenterLogin,
     userRequest
   };
@@ -24387,6 +24392,21 @@ var WRITE_PERMISSIONS = /* @__PURE__ */ new Set(["admin", "write"]);
 function isNotFoundError(error2) {
   return typeof error2 === "object" && error2 !== null && "status" in error2 && typeof error2.status === "number" && error2.status === 404;
 }
+async function acknowledgeComment(owner, repo, commentId, token) {
+  try {
+    const octokit = getOctokit(token);
+    await octokit.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content: "eyes"
+    });
+  } catch (error2) {
+    warning(
+      `Failed to react to comment ${commentId} on ${owner}/${repo}: ${toErrorMessage2(error2)}`
+    );
+  }
+}
 async function authorizeCommentTrigger(owner, repo, username, token) {
   let permission;
   try {
@@ -24458,6 +24478,7 @@ async function resolveReviewMode(inputs, event, comment) {
       comment.prNumber,
       inputs.githubToken
     );
+    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
     if (target.isFork) {
       warning(
         "A fork PR's code will be checked out for this trusted comment-triggered review."
