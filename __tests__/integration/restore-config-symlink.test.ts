@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn(() => Buffer.alloc(0)) }));
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
-import { restoreConfigFromBase } from '../src/restore-config.js';
+import { restoreConfigFromBase } from '../../src/restore-config.js';
 
 let originalCwd: string;
 let root: string;

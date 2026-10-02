@@ -7,6 +7,8 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/main/index.cjs && esbuild src/post.ts --bundle --platform=node --target=node24 --outfile=dist/post/index.cjs",
     "test": "vitest run",
+    "test:unit": "vitest run --exclude \"__tests__/integration/**\"",
+    "test:integration": "vitest run __tests__/integration",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc",
     "lint": "biome lint .",
