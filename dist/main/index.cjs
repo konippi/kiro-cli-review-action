@@ -20020,7 +20020,10 @@ function isPlainObject(value) {
 
 // src/acp-client.ts
 function describeRpcError(error2) {
-  return isPlainObject(error2) ? `${error2.code}: ${error2.message}` : String(error2);
+  if (isPlainObject(error2) && "code" in error2 && "message" in error2) {
+    return `${error2.code}: ${error2.message}`;
+  }
+  return typeof error2 === "string" ? error2 : JSON.stringify(error2);
 }
 var AcpClient = class {
   constructor(kiroBinary, debug2, kiroApiKey) {

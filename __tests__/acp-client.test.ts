@@ -101,6 +101,7 @@ describe('AcpClient', () => {
   it.each([
     ['{"code":-1,"message":"fail"}', 'ACP error -1: fail'],
     ['"boom"', 'ACP error boom'],
+    ['{"detail":"x"}', 'ACP error {"detail":"x"}'],
   ])('rejects the pending request on a JSON-RPC error: %s', async (error, message) => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);

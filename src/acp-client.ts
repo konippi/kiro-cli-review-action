@@ -19,7 +19,11 @@ interface JsonRpcMessage {
 }
 
 function describeRpcError(error: unknown): string {
-  return isPlainObject(error) ? `${error.code}: ${error.message}` : String(error);
+  if (isPlainObject(error) && 'code' in error && 'message' in error) {
+    return `${error.code}: ${error.message}`;
+  }
+
+  return typeof error === 'string' ? error : JSON.stringify(error);
 }
 
 /** Result returned after the ACP review prompt completes. */
