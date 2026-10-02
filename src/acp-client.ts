@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import * as core from '@actions/core';
-import type { ReviewResult } from './types.js';
+import { isPlainObject } from './guards.js';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -12,14 +12,24 @@ interface JsonRpcRequest {
 }
 
 interface JsonRpcMessage {
-  jsonrpc: string;
+  jsonrpc?: string;
   id?: number;
   method?: string;
-  params?: Record<string, unknown>;
+  params?: unknown;
   result?: unknown;
   error?: { code: number; message: string };
 }
 
+/** Result returned after the ACP review prompt completes. */
+export interface ReviewResult {
+  readonly toolCalls: readonly string[];
+}
+
+function isJsonRpcMessage(value: unknown): value is JsonRpcMessage {
+  return isPlainObject(value);
+}
+
+/** Runs Kiro CLI through its Agent Client Protocol interface. */
 export class AcpClient {
   private proc: ChildProcess | null = null;
   private nextId = 1;
@@ -92,7 +102,7 @@ export class AcpClient {
         },
       ],
     });
-    const sessionId = (result as Record<string, unknown>)?.sessionId;
+    const sessionId = isPlainObject(result) ? result.sessionId : undefined;
     if (typeof sessionId !== 'string') {
       throw new Error('session/new response missing sessionId');
     }
@@ -131,12 +141,14 @@ export class AcpClient {
 
   private handleLine(raw: string): void {
     if (this.debug) core.info(`ACP ← ${raw}`);
-    let msg: JsonRpcMessage;
+    let value: unknown;
     try {
-      msg = JSON.parse(raw) as JsonRpcMessage;
+      value = JSON.parse(raw);
     } catch {
       return;
     }
+    if (!isJsonRpcMessage(value)) return;
+    const msg = value;
 
     if (msg.id !== undefined) {
       const p = this.pending.get(msg.id);
@@ -151,18 +163,21 @@ export class AcpClient {
       return;
     }
 
-    if (msg.method === 'session/update' && msg.params) {
+    if (msg.method === 'session/update' && isPlainObject(msg.params)) {
       this.handleUpdate(msg.params);
     }
   }
 
   private handleUpdate(params: Record<string, unknown>): void {
     const update = params.update;
-    if (typeof update !== 'object' || update === null) return;
-    const u = update as Record<string, unknown>;
-    if (u.sessionUpdate === 'tool_call' && typeof u.title === 'string' && u.title !== '') {
-      this.toolCalls.push(u.title);
-      core.info(`Tool call: ${u.title}`);
+    if (!isPlainObject(update)) return;
+    if (
+      update.sessionUpdate === 'tool_call' &&
+      typeof update.title === 'string' &&
+      update.title !== ''
+    ) {
+      this.toolCalls.push(update.title);
+      core.info(`Tool call: ${update.title}`);
     }
   }
 }

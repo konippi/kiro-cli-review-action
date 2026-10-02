@@ -7,9 +7,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
-import { SENSITIVE_PATHS } from '../src/constants.js';
 import { checkoutPullRequestHead } from '../src/git.js';
-import { restoreConfigFromBase } from '../src/restore-config.js';
+import { restoreConfigFromBase, SENSITIVE_PATHS } from '../src/restore-config.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(

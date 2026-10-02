@@ -21,8 +21,7 @@ vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 import { execFileSync } from 'node:child_process';
 import { lstatSync, rmSync } from 'node:fs';
 import * as core from '@actions/core';
-import { SENSITIVE_PATHS } from '../src/constants.js';
-import { restoreConfigFromBase } from '../src/restore-config.js';
+import { restoreConfigFromBase, SENSITIVE_PATHS } from '../src/restore-config.js';
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const mockLstatSync = vi.mocked(lstatSync);

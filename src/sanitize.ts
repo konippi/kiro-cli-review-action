@@ -1,4 +1,5 @@
-import { MAX_USER_REQUEST_LENGTH } from './constants.js';
+/** Maximum number of comment characters accepted after a review trigger. */
+export const MAX_USER_REQUEST_LENGTH = 2048;
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional stripping of control characters for sanitization
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;

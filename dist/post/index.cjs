@@ -12,10 +12,6 @@ var __commonJS = (cb, mod) => function __require() {
     throw mod = 0, e;
   }
 };
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -32,7 +28,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // node_modules/.pnpm/tunnel@0.0.6/node_modules/tunnel/lib/tunnel.js
 var require_tunnel = __commonJS({
@@ -18637,12 +18632,7 @@ var require_undici = __commonJS({
   }
 });
 
-// src/post.ts
-var post_exports = {};
-__export(post_exports, {
-  default: () => post_default
-});
-module.exports = __toCommonJS(post_exports);
+// src/cleanup.ts
 var import_node_fs = require("node:fs");
 
 // node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/command.js
@@ -19090,10 +19080,13 @@ function getState(name) {
   return process.env[`STATE_${name}`] || "";
 }
 
-// src/constants.ts
-var SIGTERM_GRACE_MS = 5e3;
+// src/errors.ts
+function toErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
 
-// src/post.ts
+// src/cleanup.ts
+var SIGTERM_GRACE_MS = 5e3;
 function killProcess(pid) {
   try {
     process.kill(pid, "SIGTERM");
@@ -19107,7 +19100,7 @@ function killProcess(pid) {
     }
   }, SIGTERM_GRACE_MS);
 }
-async function run() {
+async function cleanup() {
   const acpPid = getState("acp_pid");
   if (acpPid) {
     const pid = Number.parseInt(acpPid, 10);
@@ -19122,9 +19115,16 @@ async function run() {
   }
   info("Cleanup complete");
 }
-var post_default = run().catch((error) => {
-  warning(`Post cleanup error: ${error instanceof Error ? error.message : String(error)}`);
-});
+async function run() {
+  try {
+    await cleanup();
+  } catch (error) {
+    warning(`Post cleanup error: ${toErrorMessage(error)}`);
+  }
+}
+
+// src/post.ts
+void run();
 /*! Bundled license information:
 
 undici/lib/web/fetch/body.js:

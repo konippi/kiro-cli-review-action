@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import { toErrorMessage } from './errors.js';
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_MIN_DELAY_SECONDS = 10;
@@ -26,7 +27,7 @@ export async function withRetry<T>(
     try {
       return await action();
     } catch (error: unknown) {
-      core.info(error instanceof Error ? error.message : String(error));
+      core.info(toErrorMessage(error));
 
       const delaySeconds = Math.floor(Math.random() * (maxSeconds - minSeconds + 1)) + minSeconds;
 
