@@ -3,9 +3,27 @@ import { join } from 'node:path';
 import * as core from '@actions/core';
 import { isPlainObject } from './guards.js';
 
-function readConfig(path: string): Record<string, unknown> {
-  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
-  if (!isPlainObject(value)) throw new Error('Agent configuration must be an object');
+const AGENT_NAME = 'code-reviewer';
+
+// Read and validate an agent configuration; errors name the path but never echo its contents.
+function readAgentConfig(path: string): Record<string, unknown> {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error: unknown) {
+    throw new Error(`Unable to read agent configuration at ${path}`, { cause: error });
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error: unknown) {
+    throw new Error(`Invalid JSON in agent configuration at ${path}`, { cause: error });
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`Agent configuration at ${path} must be a JSON object`);
+  }
 
   return value;
 }
@@ -25,26 +43,19 @@ export function prepareAgentConfig(options: {
   }
 
   const agentDir = join('.kiro', 'agents');
-  const destination = join(agentDir, 'code-reviewer.json');
-  const bundled = join(options.actionPath, 'agents', 'code-reviewer.json');
+  const destination = join(agentDir, `${AGENT_NAME}.json`);
 
-  if (options.model !== '') {
-    const source = existsSync(destination) ? destination : bundled;
-    let config: Record<string, unknown>;
-
-    try {
-      config = readConfig(source);
-    } catch {
-      config = readConfig(bundled);
-    }
-
+  if (!existsSync(destination)) {
     mkdirSync(agentDir, { recursive: true });
-    config.model = options.model;
-    writeFileSync(destination, JSON.stringify(config, null, 2));
-  } else if (!existsSync(destination)) {
-    mkdirSync(agentDir, { recursive: true });
-    copyFileSync(bundled, destination);
+    copyFileSync(join(options.actionPath, 'agents', `${AGENT_NAME}.json`), destination);
   }
 
-  return 'code-reviewer';
+  const config = readAgentConfig(destination);
+
+  if (options.model !== '') {
+    config.model = options.model;
+    writeFileSync(destination, JSON.stringify(config, null, 2));
+  }
+
+  return AGENT_NAME;
 }

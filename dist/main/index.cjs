@@ -20159,9 +20159,23 @@ var AcpClient = class {
 // src/agent-config.ts
 var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
-function readConfig(path) {
-  const value = JSON.parse((0, import_node_fs.readFileSync)(path, "utf8"));
-  if (!isPlainObject(value)) throw new Error("Agent configuration must be an object");
+var AGENT_NAME = "code-reviewer";
+function readAgentConfig(path) {
+  let text;
+  try {
+    text = (0, import_node_fs.readFileSync)(path, "utf8");
+  } catch (error2) {
+    throw new Error(`Unable to read agent configuration at ${path}`, { cause: error2 });
+  }
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error2) {
+    throw new Error(`Invalid JSON in agent configuration at ${path}`, { cause: error2 });
+  }
+  if (!isPlainObject(value)) {
+    throw new Error(`Agent configuration at ${path} must be a JSON object`);
+  }
   return value;
 }
 function prepareAgentConfig(options) {
@@ -20172,24 +20186,17 @@ function prepareAgentConfig(options) {
     return options.agent;
   }
   const agentDir = (0, import_node_path.join)(".kiro", "agents");
-  const destination = (0, import_node_path.join)(agentDir, "code-reviewer.json");
-  const bundled = (0, import_node_path.join)(options.actionPath, "agents", "code-reviewer.json");
-  if (options.model !== "") {
-    const source = (0, import_node_fs.existsSync)(destination) ? destination : bundled;
-    let config;
-    try {
-      config = readConfig(source);
-    } catch {
-      config = readConfig(bundled);
-    }
+  const destination = (0, import_node_path.join)(agentDir, `${AGENT_NAME}.json`);
+  if (!(0, import_node_fs.existsSync)(destination)) {
     (0, import_node_fs.mkdirSync)(agentDir, { recursive: true });
+    (0, import_node_fs.copyFileSync)((0, import_node_path.join)(options.actionPath, "agents", `${AGENT_NAME}.json`), destination);
+  }
+  const config = readAgentConfig(destination);
+  if (options.model !== "") {
     config.model = options.model;
     (0, import_node_fs.writeFileSync)(destination, JSON.stringify(config, null, 2));
-  } else if (!(0, import_node_fs.existsSync)(destination)) {
-    (0, import_node_fs.mkdirSync)(agentDir, { recursive: true });
-    (0, import_node_fs.copyFileSync)(bundled, destination);
   }
-  return "code-reviewer";
+  return AGENT_NAME;
 }
 
 // node_modules/.pnpm/@actions+github@9.1.1/node_modules/@actions/github/lib/context.js

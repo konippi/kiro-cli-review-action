@@ -21,7 +21,7 @@ beforeEach(() => {
   temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-agent-config-'));
   actionPath = join(temporaryDirectory, 'action');
   const repositoryPath = join(temporaryDirectory, 'repository');
-  destination = join(repositoryPath, '.kiro', 'agents', 'code-reviewer.json');
+  destination = join('.kiro', 'agents', 'code-reviewer.json');
   bundled = join(actionPath, 'agents', 'code-reviewer.json');
 
   mkdirSync(join(actionPath, 'agents'), { recursive: true });
@@ -34,6 +34,17 @@ afterEach(() => {
   process.chdir(originalWorkingDirectory);
   rmSync(temporaryDirectory, { recursive: true, force: true });
 });
+
+function getThrownError(callback: () => unknown): Error {
+  try {
+    callback();
+  } catch (error: unknown) {
+    if (error instanceof Error) return error;
+    throw error;
+  }
+
+  throw new Error('Expected callback to throw');
+}
 
 describe('prepareAgentConfig', () => {
   it('returns a custom agent and warns only when a model is also specified', () => {
@@ -57,12 +68,13 @@ describe('prepareAgentConfig', () => {
   });
 
   it('leaves an existing destination unchanged when no model is specified', () => {
+    const contents = JSON.stringify({ name: 'existing', setting: false });
     mkdirSync(join('.kiro', 'agents'), { recursive: true });
-    writeFileSync(destination, 'existing config');
+    writeFileSync(destination, contents);
 
     prepareAgentConfig({ agent: '', model: '', actionPath });
 
-    expect(readFileSync(destination, 'utf8')).toBe('existing config');
+    expect(readFileSync(destination, 'utf8')).toBe(contents);
   });
 
   it('injects a model into the bundled configuration', () => {
@@ -75,7 +87,7 @@ describe('prepareAgentConfig', () => {
     });
   });
 
-  it('prefers an existing destination when injecting a model', () => {
+  it('injects a model into an existing destination', () => {
     mkdirSync(join('.kiro', 'agents'), { recursive: true });
     writeFileSync(destination, JSON.stringify({ name: 'existing', setting: false }));
 
@@ -88,29 +100,49 @@ describe('prepareAgentConfig', () => {
     });
   });
 
-  it('falls back to the bundled configuration when the destination is invalid JSON', () => {
+  it('throws on invalid JSON without overwriting the destination', () => {
+    const contents = '{ invalid';
     mkdirSync(join('.kiro', 'agents'), { recursive: true });
-    writeFileSync(destination, 'not JSON');
+    writeFileSync(destination, contents);
 
-    prepareAgentConfig({ agent: '', model: 'claude', actionPath });
+    const error = getThrownError(() =>
+      prepareAgentConfig({ agent: '', model: 'claude', actionPath }),
+    );
 
-    expect(JSON.parse(readFileSync(destination, 'utf8'))).toEqual({
-      name: 'bundled',
-      setting: true,
-      model: 'claude',
-    });
+    expect(error.message).toBe(`Invalid JSON in agent configuration at ${destination}`);
+    expect(error.message).not.toContain(contents);
+    expect(readFileSync(destination, 'utf8')).toBe(contents);
   });
 
-  it('falls back to the bundled configuration when the destination is not an object', () => {
+  it('throws when the configuration is not a JSON object', () => {
+    const contents = '[]';
     mkdirSync(join('.kiro', 'agents'), { recursive: true });
-    writeFileSync(destination, '[]');
+    writeFileSync(destination, contents);
 
-    prepareAgentConfig({ agent: '', model: 'claude', actionPath });
+    const error = getThrownError(() =>
+      prepareAgentConfig({ agent: '', model: 'claude', actionPath }),
+    );
 
-    expect(JSON.parse(readFileSync(destination, 'utf8'))).toEqual({
-      name: 'bundled',
-      setting: true,
-      model: 'claude',
-    });
+    expect(error.message).toBe(`Agent configuration at ${destination} must be a JSON object`);
+    expect(error.message).not.toContain(contents);
+  });
+
+  it('validates an existing configuration even when no model is specified', () => {
+    const contents = '{ invalid';
+    mkdirSync(join('.kiro', 'agents'), { recursive: true });
+    writeFileSync(destination, contents);
+
+    const error = getThrownError(() => prepareAgentConfig({ agent: '', model: '', actionPath }));
+
+    expect(error.message).toBe(`Invalid JSON in agent configuration at ${destination}`);
+    expect(error.message).not.toContain(contents);
+  });
+
+  it('throws when the destination cannot be read', () => {
+    mkdirSync(destination, { recursive: true });
+
+    const error = getThrownError(() => prepareAgentConfig({ agent: '', model: '', actionPath }));
+
+    expect(error.message).toBe(`Unable to read agent configuration at ${destination}`);
   });
 });
