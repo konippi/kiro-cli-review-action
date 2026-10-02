@@ -81,6 +81,11 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   const prNumber = issue.number;
   if (typeof prNumber !== 'number') return null;
 
+  const commenterLogin = comment.user?.login;
+  if (typeof commenterLogin !== 'string' || commenterLogin === '') {
+    throw new Error('Unexpected issue_comment payload: comment.user.login is missing');
+  }
+
   const raw = extractUserRequest(body, triggerPhrase);
   const userRequest = raw ? sanitizeComment(raw) || null : null;
 
@@ -88,7 +93,7 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
     owner: context.repo.owner,
     repo: context.repo.repo,
     prNumber,
-    commenterLogin: typeof comment.user?.login === 'string' ? comment.user.login : '',
+    commenterLogin,
     userRequest,
   };
 }

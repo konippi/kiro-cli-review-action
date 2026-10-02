@@ -222,7 +222,7 @@ export async function restoreConfigFromBase(
     );
   }, retryOptions);
 
-  let restoredAny = false;
+  const restoredPaths: string[] = [];
 
   for (const sensitivePath of SENSITIVE_PATHS) {
     try {
@@ -241,15 +241,13 @@ export async function restoreConfigFromBase(
       `Failed to restore ${sensitivePath} from ${baseRevision}`,
       { stdio: 'pipe' },
     );
-    restoredAny = true;
+    restoredPaths.push(sensitivePath);
   }
 
-  try {
-    git(['reset', '--', ...SENSITIVE_PATHS], 'Failed to unstage restored configuration', {
+  if (restoredPaths.length > 0) {
+    git(['reset', '--', ...restoredPaths], 'Failed to unstage restored configuration', {
       stdio: 'pipe',
     });
-  } catch (error: unknown) {
-    if (restoredAny) throw error;
   }
 
   return SENSITIVE_PATHS;

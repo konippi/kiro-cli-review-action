@@ -53,34 +53,54 @@ describe('git command hardening', () => {
 });
 
 describe('buildGitAuthEnv', () => {
-  it('keeps empty-token environments unchanged and sets a masked scoped header at index zero', () => {
+  it('keeps empty-token environments unchanged', () => {
     const parentEnv = { PATH: '/usr/bin' };
-    expect(buildGitAuthEnv(parentEnv, '')).toBe(parentEnv);
 
+    expect(buildGitAuthEnv(parentEnv, '')).toBe(parentEnv);
+  });
+
+  it.each([
+    {
+      name: 'no existing count',
+      parentEnv: { PATH: '/usr/bin' },
+      expected: {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      },
+    },
+    {
+      name: 'an invalid existing count',
+      parentEnv: { PATH: '/usr/bin', GIT_CONFIG_COUNT: 'abc' },
+      expected: {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      },
+    },
+    {
+      name: 'an existing config entry',
+      parentEnv: {
+        GITHUB_SERVER_URL: 'https://github.example.com/enterprise/',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'safe.directory',
+        GIT_CONFIG_VALUE_0: '/workspace',
+      },
+      expected: {
+        GIT_CONFIG_COUNT: '2',
+        GIT_CONFIG_KEY_0: 'safe.directory',
+        GIT_CONFIG_VALUE_0: '/workspace',
+        GIT_CONFIG_KEY_1: 'http.https://github.example.com/.extraheader',
+      },
+    },
+  ])('appends a masked scoped header after $name', ({ parentEnv, expected }) => {
     const encoded = Buffer.from('x-access-token:secret-token').toString('base64');
+    const index = Number.parseInt(expected.GIT_CONFIG_COUNT, 10) - 1;
+
     expect(buildGitAuthEnv(parentEnv, 'secret-token')).toEqual({
-      PATH: '/usr/bin',
-      GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${encoded}`,
+      ...parentEnv,
+      ...expected,
+      [`GIT_CONFIG_VALUE_${index}`]: `AUTHORIZATION: basic ${encoded}`,
     });
     expect(core.setSecret).toHaveBeenCalledWith(encoded);
-
-    expect(
-      buildGitAuthEnv(
-        {
-          GITHUB_SERVER_URL: 'https://github.example.com/enterprise/',
-          GIT_CONFIG_COUNT: '7',
-          GIT_CONFIG_KEY_0: 'safe.directory',
-          GIT_CONFIG_VALUE_0: '/workspace',
-        },
-        'secret-token',
-      ),
-    ).toMatchObject({
-      GIT_CONFIG_COUNT: '1',
-      GIT_CONFIG_KEY_0: 'http.https://github.example.com/.extraheader',
-      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${encoded}`,
-    });
   });
 });
 

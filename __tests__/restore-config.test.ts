@@ -117,6 +117,9 @@ describe('restoreConfigFromBase', () => {
     expect(
       mockExecFileSync.mock.calls.filter(([, args]) => gitCommand(args) === 'checkout'),
     ).toHaveLength(0);
+    expect(
+      mockExecFileSync.mock.calls.filter(([, args]) => gitCommand(args) === 'reset'),
+    ).toHaveLength(0);
     for (const sensitivePath of SENSITIVE_PATHS) {
       expect(core.info).toHaveBeenCalledWith(
         `${sensitivePath} is not on origin/main; left removed`,
@@ -125,14 +128,24 @@ describe('restoreConfigFromBase', () => {
   });
 
   it('propagates reset failures when at least one path was restored', async () => {
+    const restoredPath = 'README.md';
+
     mockExecFileSync.mockImplementation((_file, args) => {
       if (gitCommand(args) === 'rev-parse') return '.git\n';
+      if (gitCommand(args) === 'cat-file' && !args?.includes(`origin/main:${restoredPath}`)) {
+        throw new Error('path absent');
+      }
       if (gitCommand(args) === 'reset') throw new Error('reset failed');
       return Buffer.alloc(0);
     });
 
     await expect(restoreConfigFromBase('main', undefined, NO_WAIT)).rejects.toThrow(
       'Failed to unstage restored configuration',
+    );
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      [...SAFE_GIT_ARGS, 'reset', '--', restoredPath],
+      expect.objectContaining({ encoding: 'utf8', stdio: 'pipe' }),
     );
   });
 

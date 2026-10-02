@@ -156,6 +156,7 @@ describe('comment triggers', () => {
       action?: string;
       userType?: string;
       login?: string;
+      omitLogin?: boolean;
     } = {},
   ): void {
     ctx.eventName = 'issue_comment';
@@ -164,7 +165,10 @@ describe('comment triggers', () => {
       comment: {
         body: options.body ?? '@kiro review this',
         author_association: 'NONE',
-        user: { type: options.userType ?? 'User', login: options.login ?? 'trusted-user' },
+        user: {
+          type: options.userType ?? 'User',
+          ...(options.omitLogin ? {} : { login: options.login ?? 'trusted-user' }),
+        },
       },
       issue: {
         number: 10,
@@ -187,6 +191,14 @@ describe('comment triggers', () => {
   it('returns null user request when trigger has no trailing text', () => {
     setCommentPayload({ body: '@kiro' });
     expect(parseCommentContext('@kiro')?.userRequest).toBeNull();
+  });
+
+  it('throws when the commenter login is missing', () => {
+    setCommentPayload({ omitLogin: true });
+
+    expect(() => parseCommentContext('@kiro')).toThrow(
+      'Unexpected issue_comment payload: comment.user.login is missing',
+    );
   });
 
   it('rejects non-comment events', () => {

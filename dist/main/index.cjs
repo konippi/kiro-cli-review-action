@@ -23993,13 +23993,17 @@ function parseCommentContext(triggerPhrase) {
   if (!pattern.test(body)) return null;
   const prNumber = issue2.number;
   if (typeof prNumber !== "number") return null;
+  const commenterLogin = comment.user?.login;
+  if (typeof commenterLogin !== "string" || commenterLogin === "") {
+    throw new Error("Unexpected issue_comment payload: comment.user.login is missing");
+  }
   const raw = extractUserRequest(body, triggerPhrase);
   const userRequest = raw ? sanitizeComment(raw) || null : null;
   return {
     owner: context3.repo.owner,
     repo: context3.repo.repo,
     prNumber,
-    commenterLogin: typeof comment.user?.login === "string" ? comment.user.login : "",
+    commenterLogin,
     userRequest
   };
 }
@@ -24106,11 +24110,13 @@ function buildGitAuthEnv(parentEnv, token) {
   const encodedCredentials = Buffer.from(`x-access-token:${token}`).toString("base64");
   setSecret(encodedCredentials);
   const origin = new URL(parentEnv.GITHUB_SERVER_URL || "https://github.com").origin;
+  const parsedCount = Number.parseInt(parentEnv.GIT_CONFIG_COUNT ?? "", 10);
+  const count = Number.isNaN(parsedCount) || parsedCount < 0 ? 0 : parsedCount;
   return {
     ...parentEnv,
-    GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: `http.${origin}/.extraheader`,
-    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${encodedCredentials}`
+    GIT_CONFIG_COUNT: String(count + 1),
+    [`GIT_CONFIG_KEY_${count}`]: `http.${origin}/.extraheader`,
+    [`GIT_CONFIG_VALUE_${count}`]: `AUTHORIZATION: basic ${encodedCredentials}`
   };
 }
 async function checkoutPullRequestHead(headSha, token, options) {
@@ -24284,7 +24290,7 @@ async function restoreConfigFromBase(baseBranch, gitEnvironment, retryOptions, l
       { stdio: "inherit", ...gitEnvironment ? { env: gitEnvironment } : {} }
     );
   }, retryOptions);
-  let restoredAny = false;
+  const restoredPaths = [];
   for (const sensitivePath of SENSITIVE_PATHS) {
     try {
       git(
@@ -24301,14 +24307,12 @@ async function restoreConfigFromBase(baseBranch, gitEnvironment, retryOptions, l
       `Failed to restore ${sensitivePath} from ${baseRevision}`,
       { stdio: "pipe" }
     );
-    restoredAny = true;
+    restoredPaths.push(sensitivePath);
   }
-  try {
-    git(["reset", "--", ...SENSITIVE_PATHS], "Failed to unstage restored configuration", {
+  if (restoredPaths.length > 0) {
+    git(["reset", "--", ...restoredPaths], "Failed to unstage restored configuration", {
       stdio: "pipe"
     });
-  } catch (error2) {
-    if (restoredAny) throw error2;
   }
   return SENSITIVE_PATHS;
 }

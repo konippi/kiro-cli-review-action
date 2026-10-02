@@ -102,7 +102,7 @@ The action handles all event filtering internally — only PR comments containin
 
 Place `.kiro/agents/code-reviewer.json` in your repository (on the default branch) to override the default agent configuration.
 
-> **Note**: Only configurations merged to the base branch take effect. PR-authored changes to `.kiro/` are ignored for security.
+> **Note**: Only files merged to the base branch take effect. PR-authored changes to `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, and `AmazonQ.md` are restored from the base branch before the review runs.
 
 ## License
 

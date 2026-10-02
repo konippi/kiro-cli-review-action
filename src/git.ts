@@ -36,7 +36,7 @@ export function validateCommitSha(commitSha: string): void {
   }
 }
 
-/** Build an environment with token authentication scoped to the GitHub origin. */
+/** Build an environment with token authentication appended and scoped to the GitHub origin. */
 export function buildGitAuthEnv(parentEnv: NodeJS.ProcessEnv, token: string): NodeJS.ProcessEnv {
   if (!token) {
     return parentEnv;
@@ -46,12 +46,14 @@ export function buildGitAuthEnv(parentEnv: NodeJS.ProcessEnv, token: string): No
   core.setSecret(encodedCredentials);
 
   const origin = new URL(parentEnv.GITHUB_SERVER_URL || 'https://github.com').origin;
+  const parsedCount = Number.parseInt(parentEnv.GIT_CONFIG_COUNT ?? '', 10);
+  const count = Number.isNaN(parsedCount) || parsedCount < 0 ? 0 : parsedCount;
 
   return {
     ...parentEnv,
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: `http.${origin}/.extraheader`,
-    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${encodedCredentials}`,
+    GIT_CONFIG_COUNT: String(count + 1),
+    [`GIT_CONFIG_KEY_${count}`]: `http.${origin}/.extraheader`,
+    [`GIT_CONFIG_VALUE_${count}`]: `AUTHORIZATION: basic ${encodedCredentials}`,
   };
 }
 
