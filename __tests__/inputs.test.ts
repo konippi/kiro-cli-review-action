@@ -55,4 +55,16 @@ describe('parseInputs', () => {
       model: 'model-id',
     });
   });
+
+  it.each(['1junk', '1.5', '0'])('rejects max_diff_size %s', (value) => {
+    getInput.mockImplementation((name: string) => {
+      if (name === 'kiro_api_key') return 'test-key';
+      if (name === 'max_diff_size') return value;
+      return '';
+    });
+
+    expect(() => parseInputs()).toThrow(
+      `Input max_diff_size must be a positive integer; received: ${value}`,
+    );
+  });
 });

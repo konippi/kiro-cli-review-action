@@ -76,7 +76,9 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   if (!pattern.test(body)) return null;
 
   const prNumber = issue.number;
-  if (typeof prNumber !== 'number') return null;
+  if (typeof prNumber !== 'number') {
+    throw new Error('Unexpected issue_comment payload: issue.number is missing');
+  }
 
   const commenterLogin = comment.user?.login;
   if (typeof commenterLogin !== 'string' || commenterLogin === '') {

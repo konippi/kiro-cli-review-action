@@ -45,6 +45,7 @@ function setCommentPayload(
     userType?: string;
     login?: string;
     omitLogin?: boolean;
+    omitNumber?: boolean;
   } = {},
 ): void {
   ctx.eventName = 'issue_comment';
@@ -59,7 +60,7 @@ function setCommentPayload(
       },
     },
     issue: {
-      number: 10,
+      ...(options.omitNumber ? {} : { number: 10 }),
       ...(options.hasPR === false ? {} : { pull_request: { url: '...' } }),
     },
   };
@@ -128,12 +129,21 @@ describe('parseCommentContext', () => {
     expect(parseCommentContext('@kiro')?.userRequest).toBeNull();
   });
 
-  it('throws when the commenter login is missing', () => {
-    setCommentPayload({ omitLogin: true });
+  it.each([
+    {
+      name: 'commenter login',
+      options: { omitLogin: true },
+      message: 'Unexpected issue_comment payload: comment.user.login is missing',
+    },
+    {
+      name: 'issue number',
+      options: { omitNumber: true },
+      message: 'Unexpected issue_comment payload: issue.number is missing',
+    },
+  ])('throws when the $name is missing', ({ options, message }) => {
+    setCommentPayload(options);
 
-    expect(() => parseCommentContext('@kiro')).toThrow(
-      'Unexpected issue_comment payload: comment.user.login is missing',
-    );
+    expect(() => parseCommentContext('@kiro')).toThrow(message);
   });
 
   it('rejects non-comment events', () => {

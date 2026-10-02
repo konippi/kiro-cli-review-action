@@ -3,15 +3,13 @@ import { join } from 'node:path';
 import * as core from '@actions/core';
 import { AcpClient } from './acp-client.js';
 import { prepareAgentConfig } from './agent-config.js';
-import type { PullRequestTarget } from './context.js';
-import { parseCommentContext, parseEventContext } from './context.js';
+import { type PullRequestTarget, parseCommentContext, parseEventContext } from './context.js';
 import { isErrnoException, toErrorMessage } from './errors.js';
 import { buildGitAuthEnv, checkoutPullRequestHead } from './git.js';
 import { parseInputs } from './inputs.js';
 import { installGithubMcpServer, installKiroCli } from './install.js';
 import { restoreConfigFromBase } from './restore-config.js';
-import type { ReviewMode } from './review-mode.js';
-import { resolveReviewMode } from './review-mode.js';
+import { type ReviewMode, resolveReviewMode } from './review-mode.js';
 
 function setSkip(): void {
   core.setOutput('review_result', 'skip');
@@ -66,7 +64,7 @@ async function review(): Promise<void> {
     installGithubMcpServer(inputs.githubMcpVersion, installDir),
   ]);
 
-  // Copy bundled agent if needed
+  // Prepare the agent configuration
   const actionPath = process.env.GITHUB_ACTION_PATH || '.';
   const agentName = prepareAgentConfig({
     agent: inputs.agent,

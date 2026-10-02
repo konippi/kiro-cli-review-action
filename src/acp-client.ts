@@ -1,5 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import * as core from '@actions/core';
 import { isPlainObject } from './guards.js';
@@ -12,21 +11,20 @@ interface JsonRpcRequest {
 }
 
 interface JsonRpcMessage {
-  jsonrpc?: string;
-  id?: number;
-  method?: string;
+  id?: unknown;
+  method?: unknown;
   params?: unknown;
   result?: unknown;
-  error?: { code: number; message: string };
+  error?: unknown;
+}
+
+function describeRpcError(error: unknown): string {
+  return isPlainObject(error) ? `${error.code}: ${error.message}` : String(error);
 }
 
 /** Result returned after the ACP review prompt completes. */
 export interface ReviewResult {
   readonly toolCalls: readonly string[];
-}
-
-function isJsonRpcMessage(value: unknown): value is JsonRpcMessage {
-  return isPlainObject(value);
 }
 
 /** Runs Kiro CLI through its Agent Client Protocol interface. */
@@ -147,15 +145,15 @@ export class AcpClient {
     } catch {
       return;
     }
-    if (!isJsonRpcMessage(value)) return;
-    const msg = value;
+    if (!isPlainObject(value)) return;
+    const msg: JsonRpcMessage = value;
 
-    if (msg.id !== undefined) {
+    if (typeof msg.id === 'number') {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
         if (msg.error) {
-          p.reject(new Error(`ACP error ${msg.error.code}: ${msg.error.message}`));
+          p.reject(new Error(`ACP error ${describeRpcError(msg.error)}`));
         } else {
           p.resolve(msg.result);
         }

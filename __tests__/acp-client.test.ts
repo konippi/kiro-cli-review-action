@@ -98,7 +98,10 @@ describe('AcpClient', () => {
     await expect(Promise.race([response, timeout])).resolves.toBeUndefined();
   });
 
-  it('rejects send on JSON-RPC error', async () => {
+  it.each([
+    ['{"code":-1,"message":"fail"}', 'ACP error -1: fail'],
+    ['"boom"', 'ACP error boom'],
+  ])('rejects the pending request on a JSON-RPC error: %s', async (error, message) => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
@@ -106,9 +109,9 @@ describe('AcpClient', () => {
     await client.start();
 
     const promise = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"fail"}}');
+    sendMessage(stdout, `{"jsonrpc":"2.0","id":1,"error":${error}}`);
 
-    await expect(promise).rejects.toThrow('ACP error -1: fail');
+    await expect(promise).rejects.toThrow(message);
   });
 
   it('tracks tool calls and returns result from prompt', async () => {
@@ -151,19 +154,22 @@ describe('AcpClient', () => {
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
-  it.each(['not json at all', '42'])('ignores a non-message line: %s', async (line) => {
-    const { proc, stdout } = createMockProcess();
-    proc.on.mockImplementation(() => proc);
+  it.each(['not json at all', '42', '{"jsonrpc":"2.0","id":"1","result":{}}'])(
+    'ignores lines that cannot complete a request: %s',
+    async (line) => {
+      const { proc, stdout } = createMockProcess();
+      proc.on.mockImplementation(() => proc);
 
-    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
-    await client.start();
+      const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+      await client.start();
 
-    sendMessage(stdout, line);
+      sendMessage(stdout, line);
 
-    const initP = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
-    await expect(initP).resolves.toBeUndefined();
-  });
+      const initP = client.initialize();
+      sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
+      await expect(initP).resolves.toBeUndefined();
+    },
+  );
 
   it('rejects pending promises when process exits', async () => {
     const { proc } = createMockProcess();

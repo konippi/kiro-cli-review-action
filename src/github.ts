@@ -1,7 +1,6 @@
 import * as core from '@actions/core';
 import { getOctokit } from '@actions/github';
-import type { PullRequestTarget } from './context.js';
-import { detectFork } from './context.js';
+import { detectFork, type PullRequestTarget } from './context.js';
 
 const WRITE_PERMISSIONS = new Set(['admin', 'write']);
 

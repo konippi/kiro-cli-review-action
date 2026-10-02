@@ -20019,8 +20019,8 @@ function isPlainObject(value) {
 }
 
 // src/acp-client.ts
-function isJsonRpcMessage(value) {
-  return isPlainObject(value);
+function describeRpcError(error2) {
+  return isPlainObject(error2) ? `${error2.code}: ${error2.message}` : String(error2);
 }
 var AcpClient = class {
   constructor(kiroBinary, debug2, kiroApiKey) {
@@ -20128,14 +20128,14 @@ var AcpClient = class {
     } catch {
       return;
     }
-    if (!isJsonRpcMessage(value)) return;
+    if (!isPlainObject(value)) return;
     const msg = value;
-    if (msg.id !== void 0) {
+    if (typeof msg.id === "number") {
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
         if (msg.error) {
-          p.reject(new Error(`ACP error ${msg.error.code}: ${msg.error.message}`));
+          p.reject(new Error(`ACP error ${describeRpcError(msg.error)}`));
         } else {
           p.resolve(msg.result);
         }
@@ -24004,7 +24004,9 @@ function parseCommentContext(triggerPhrase) {
   );
   if (!pattern.test(body)) return null;
   const prNumber = issue2.number;
-  if (typeof prNumber !== "number") return null;
+  if (typeof prNumber !== "number") {
+    throw new Error("Unexpected issue_comment payload: issue.number is missing");
+  }
   const commenterLogin = comment.user?.login;
   if (typeof commenterLogin !== "string" || commenterLogin === "") {
     throw new Error("Unexpected issue_comment payload: comment.user.login is missing");
@@ -24116,6 +24118,11 @@ async function checkoutPullRequestHead(headSha, token, options) {
 
 // src/inputs.ts
 function parseInputs() {
+  const rawMaxDiffSize = getInput("max_diff_size") || "10000";
+  const maxDiffSize = Number(rawMaxDiffSize);
+  if (!Number.isInteger(maxDiffSize) || maxDiffSize <= 0) {
+    throw new Error(`Input max_diff_size must be a positive integer; received: ${rawMaxDiffSize}`);
+  }
   return {
     kiroApiKey: getInput("kiro_api_key", { required: true }),
     githubToken: getInput("github_token") || process.env.GITHUB_TOKEN || "",
@@ -24123,7 +24130,7 @@ function parseInputs() {
     model: getInput("model"),
     prompt: getInput("prompt"),
     triggerPhrase: getInput("trigger_phrase") || "@kiro",
-    maxDiffSize: Number.parseInt(getInput("max_diff_size") || "10000", 10),
+    maxDiffSize,
     debug: getInput("debug") === "true",
     githubMcpVersion: getInput("github_mcp_version")
   };
