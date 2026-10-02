@@ -24472,13 +24472,13 @@ async function resolveReviewMode(inputs, event, comment) {
       comment.commenterLogin,
       inputs.githubToken
     );
+    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
     const target = await fetchCommentPullRequest(
       comment.owner,
       comment.repo,
       comment.prNumber,
       inputs.githubToken
     );
-    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
     if (target.isFork) {
       warning(
         "A fork PR's code will be checked out for this trusted comment-triggered review."

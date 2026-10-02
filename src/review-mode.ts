@@ -41,14 +41,13 @@ export async function resolveReviewMode(
       comment.commenterLogin,
       inputs.githubToken,
     );
+    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
     const target = await fetchCommentPullRequest(
       comment.owner,
       comment.repo,
       comment.prNumber,
       inputs.githubToken,
     );
-
-    await acknowledgeComment(comment.owner, comment.repo, comment.commentId, inputs.githubToken);
 
     if (target.isFork) {
       core.warning(

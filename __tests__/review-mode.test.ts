@@ -110,7 +110,7 @@ describe('resolveReviewMode', () => {
       target: { ...target, prNumber: 10 },
       userRequest: 'focus on authentication',
     });
-    expect(calls).toEqual(['authorize', 'fetch', 'acknowledge']);
+    expect(calls).toEqual(['authorize', 'acknowledge', 'fetch']);
     expect(githubMocks.acknowledgeComment).toHaveBeenCalledWith(
       'test-owner',
       'test-repo',
