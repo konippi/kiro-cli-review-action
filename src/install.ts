@@ -48,6 +48,7 @@ async function downloadAndExtract(
   return binaryPath;
 }
 
+/** Downloads and installs the configured GitHub MCP server release. */
 export async function installGithubMcpServer(version: string, installDir: string): Promise<string> {
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(`Invalid github_mcp_version: ${version}`);
@@ -56,10 +57,7 @@ export async function installGithubMcpServer(version: string, installDir: string
   return downloadAndExtract(url, installDir, 'github-mcp-server');
 }
 
-/**
- * Install kiro-cli using the official install script.
- * The script verifies SHA256 checksums via manifest.json internally.
- */
+/** Installs kiro-cli using the official checksum-verifying install script. */
 export async function installKiroCli(): Promise<string> {
   const expectedBinary = join(process.env.HOME || '/root', '.local', 'bin', 'kiro-cli');
   if (existsSync(expectedBinary)) {

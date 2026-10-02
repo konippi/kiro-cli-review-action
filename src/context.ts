@@ -1,31 +1,32 @@
-import * as core from '@actions/core';
-import * as github from '@actions/github';
+import { context } from '@actions/github';
 import { extractUserRequest, sanitizeComment } from './sanitize.js';
-import type { ActionInputs, CommentContext, EventContext } from './types.js';
 
-const WRITE_PERMISSIONS = new Set(['admin', 'write']);
+/** Pull request to review, resolved from the event payload or the GitHub API. */
+export interface PullRequestTarget {
+  readonly owner: string;
+  readonly repo: string;
+  readonly prNumber: number;
+  readonly baseBranch: string;
+  readonly headSha: string;
+  readonly isFork: boolean;
+}
 
-function detectFork(headRepo: string | undefined, baseRepo: string | undefined): boolean {
+/** Context parsed from a matching pull request comment trigger. */
+export interface CommentContext {
+  readonly owner: string;
+  readonly repo: string;
+  readonly prNumber: number;
+  readonly commenterLogin: string;
+  readonly userRequest: string | null;
+}
+
+/** A PR is a fork when the head repository differs from the base repository or is unknown. */
+export function detectFork(headRepo: string | undefined, baseRepo: string | undefined): boolean {
   return !headRepo || !baseRepo || headRepo !== baseRepo;
 }
 
-export function parseInputs(): ActionInputs {
-  return {
-    kiroApiKey: core.getInput('kiro_api_key', { required: true }),
-    githubToken: core.getInput('github_token') || process.env.GITHUB_TOKEN || '',
-    agent: core.getInput('agent'),
-    model: core.getInput('model'),
-    prompt: core.getInput('prompt'),
-    triggerPhrase: core.getInput('trigger_phrase') || '@kiro',
-    maxDiffSize: Number.parseInt(core.getInput('max_diff_size') || '10000', 10),
-    debug: core.getInput('debug') === 'true',
-    githubMcpVersion: core.getInput('github_mcp_version'),
-  };
-}
-
 /** Returns null when not in a pull_request event. */
-export function parseEventContext(): EventContext | null {
-  const { context } = github;
+export function parseEventContext(): PullRequestTarget | null {
   const pr = context.payload.pull_request;
   if (!pr) return null;
 
@@ -51,12 +52,8 @@ export function parseEventContext(): EventContext | null {
   };
 }
 
-/**
- * Parses issue_comment event for comment-triggered review.
- * Authorization is performed via the GitHub API by authorizeCommentTrigger.
- */
+/** Parses issue_comment events for comment-triggered review. */
 export function parseCommentContext(triggerPhrase: string): CommentContext | null {
-  const { context } = github;
   if (context.eventName !== 'issue_comment') return null;
 
   const comment = context.payload.comment;
@@ -79,7 +76,9 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   if (!pattern.test(body)) return null;
 
   const prNumber = issue.number;
-  if (typeof prNumber !== 'number') return null;
+  if (typeof prNumber !== 'number') {
+    throw new Error('Unexpected issue_comment payload: issue.number is missing');
+  }
 
   const commenterLogin = comment.user?.login;
   if (typeof commenterLogin !== 'string' || commenterLogin === '') {
@@ -95,79 +94,5 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
     prNumber,
     commenterLogin,
     userRequest,
-  };
-}
-
-function isNotFoundError(error: unknown): error is { status: number } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    typeof error.status === 'number' &&
-    error.status === 404
-  );
-}
-
-/** Verifies that the commenter has repository write access. */
-export async function authorizeCommentTrigger(
-  owner: string,
-  repo: string,
-  username: string,
-  token: string,
-): Promise<void> {
-  let permission: string;
-
-  try {
-    const octokit = github.getOctokit(token);
-    const response = await octokit.rest.repos.getCollaboratorPermissionLevel({
-      owner,
-      repo,
-      username,
-    });
-    permission = response.data.permission;
-  } catch (error: unknown) {
-    if (isNotFoundError(error)) {
-      throw new Error(
-        `Commenter ${username} is not a collaborator on ${owner}/${repo}; write access is required`,
-      );
-    }
-
-    throw new Error(`Failed to verify write access for commenter ${username}`, { cause: error });
-  }
-
-  // The permission field maps maintain to write and triage to read.
-  if (WRITE_PERMISSIONS.has(permission)) {
-    core.info(`Commenter ${username} has ${permission} access`);
-    return;
-  }
-
-  throw new Error(
-    `Commenter ${username} must have write access to ${owner}/${repo}; detected permission: ${permission}`,
-  );
-}
-
-/** Fetches authoritative pull request metadata for an issue comment event. */
-export async function fetchCommentPullRequest(
-  owner: string,
-  repo: string,
-  prNumber: number,
-  token: string,
-): Promise<EventContext> {
-  const octokit = github.getOctokit(token);
-  const response = await octokit.rest.pulls.get({ owner, repo, pull_number: prNumber });
-  const pr = response.data;
-  const baseBranch = pr.base?.ref;
-  const headSha = pr.head?.sha;
-  if (typeof baseBranch !== 'string' || typeof headSha !== 'string') {
-    throw new Error('Unexpected pull request response: missing base.ref or head.sha');
-  }
-
-  return {
-    owner,
-    repo,
-    prNumber,
-    baseBranch,
-    headSha,
-    isFork: detectFork(pr.head?.repo?.full_name, pr.base?.repo?.full_name),
   };
 }

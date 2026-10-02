@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_USER_REQUEST_LENGTH } from '../src/constants.js';
-import { extractUserRequest, sanitizeComment } from '../src/sanitize.js';
+import { extractUserRequest, MAX_USER_REQUEST_LENGTH, sanitizeComment } from '../src/sanitize.js';
 
 describe('extractUserRequest', () => {
   it('extracts text after trigger phrase', () => {

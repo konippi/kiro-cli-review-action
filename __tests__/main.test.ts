@@ -10,20 +10,17 @@ const mocks = vi.hoisted(() => {
     parseInputs: vi.fn(),
     parseEventContext: vi.fn(),
     parseCommentContext: vi.fn(),
-    authorizeCommentTrigger: vi.fn(),
-    fetchCommentPullRequest: vi.fn(),
+    resolveReviewMode: vi.fn(),
     checkoutPullRequestHead: vi.fn(),
     buildGitAuthEnv: vi.fn(),
     restoreConfigFromBase: vi.fn(),
+    prepareAgentConfig: vi.fn(() => 'code-reviewer'),
+    prompt: vi.fn(async (_sessionId: string, _promptText: string) => ({ toolCalls: [] })),
   };
 });
 
 vi.mock('node:fs', () => ({
-  copyFileSync: vi.fn(),
-  existsSync: vi.fn(() => true),
-  mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => 'Review prompt'),
-  writeFileSync: vi.fn(),
 }));
 
 vi.mock('@actions/core', () => ({
@@ -35,12 +32,17 @@ vi.mock('@actions/core', () => ({
   setOutput: mocks.setOutput,
 }));
 
-vi.mock('../src/context.js', () => ({
+vi.mock('../src/inputs.js', () => ({
   parseInputs: mocks.parseInputs,
+}));
+
+vi.mock('../src/context.js', () => ({
   parseEventContext: mocks.parseEventContext,
   parseCommentContext: mocks.parseCommentContext,
-  authorizeCommentTrigger: mocks.authorizeCommentTrigger,
-  fetchCommentPullRequest: mocks.fetchCommentPullRequest,
+}));
+
+vi.mock('../src/review-mode.js', () => ({
+  resolveReviewMode: mocks.resolveReviewMode,
 }));
 
 vi.mock('../src/git.js', () => ({
@@ -52,7 +54,11 @@ vi.mock('../src/restore-config.js', () => ({
   restoreConfigFromBase: mocks.restoreConfigFromBase,
 }));
 
-vi.mock('../src/setup.js', () => ({
+vi.mock('../src/agent-config.js', () => ({
+  prepareAgentConfig: mocks.prepareAgentConfig,
+}));
+
+vi.mock('../src/install.js', () => ({
   installKiroCli: vi.fn(async () => '/kiro'),
   installGithubMcpServer: vi.fn(async () => '/mcp'),
 }));
@@ -65,8 +71,8 @@ vi.mock('../src/acp-client.js', () => ({
     async createSession(): Promise<string> {
       return 'session';
     }
-    async prompt(): Promise<{ toolCalls: string[] }> {
-      return { toolCalls: [] };
+    async prompt(sessionId: string, promptText: string): Promise<{ toolCalls: string[] }> {
+      return mocks.prompt(sessionId, promptText);
     }
     kill(): void {}
   },
@@ -102,7 +108,8 @@ const baseInputs = {
 };
 
 async function importMain(): Promise<void> {
-  await (await import('../src/main.js')).default;
+  const { run } = await import('../src/main.js');
+  await run();
 }
 
 beforeEach(() => {
@@ -112,13 +119,7 @@ beforeEach(() => {
   mocks.parseInputs.mockReturnValue(baseInputs);
   mocks.parseEventContext.mockReturnValue(target);
   mocks.parseCommentContext.mockReturnValue(null);
-  mocks.authorizeCommentTrigger.mockImplementation(async () => {
-    mocks.calls.push('authorize');
-  });
-  mocks.fetchCommentPullRequest.mockImplementation(async () => {
-    mocks.calls.push('fetch-pr');
-    return target;
-  });
+  mocks.resolveReviewMode.mockResolvedValue({ kind: 'pull_request', target });
   // Extra microtask ticks make a missing await in main.ts surface as an ordering failure.
   mocks.checkoutPullRequestHead.mockImplementation(async () => {
     await Promise.resolve();
@@ -132,16 +133,16 @@ beforeEach(() => {
   });
 });
 
-describe('PR preparation order', () => {
-  it('checks out the PR head, then restores base config with auth', async () => {
+describe('review mode preparation', () => {
+  it('checks out a PR head, then restores base config with auth', async () => {
     await importMain();
 
-    expect(mocks.calls).toEqual(['checkout', 'restore']);
     expect(mocks.checkoutPullRequestHead).toHaveBeenCalledWith(target.headSha, 'github-token');
     expect(mocks.buildGitAuthEnv).toHaveBeenCalledWith(process.env, 'github-token');
     expect(mocks.restoreConfigFromBase).toHaveBeenCalledWith('main', {
       GIT_CONFIG_COUNT: 'sentinel-auth-env',
     });
+    expect(mocks.calls).toEqual(['checkout', 'restore']);
   });
 
   it('skips a fork PR before parsing required inputs', async () => {
@@ -153,71 +154,68 @@ describe('PR preparation order', () => {
     await importMain();
 
     expect(mocks.parseInputs).not.toHaveBeenCalled();
+    expect(mocks.resolveReviewMode).not.toHaveBeenCalled();
     expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
     expect(mocks.setFailed).not.toHaveBeenCalled();
     expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'skip');
     expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '0');
   });
 
-  it('authorizes a comment before fetching and checking out, then restores base config', async () => {
+  it('prepares a comment target after resolving its review mode', async () => {
     mocks.parseEventContext.mockReturnValue(null);
     mocks.parseCommentContext.mockReturnValue(comment);
+    mocks.resolveReviewMode.mockImplementation(async () => {
+      mocks.calls.push('resolve');
+      return { kind: 'comment', target, userRequest: comment.userRequest };
+    });
 
     await importMain();
 
-    expect(mocks.calls).toEqual(['authorize', 'fetch-pr', 'checkout', 'restore']);
-    expect(mocks.authorizeCommentTrigger).toHaveBeenCalledWith(
-      'owner',
-      'repo',
-      'trusted-user',
-      'github-token',
-    );
-    expect(mocks.fetchCommentPullRequest).toHaveBeenCalledWith('owner', 'repo', 7, 'github-token');
+    expect(mocks.resolveReviewMode).toHaveBeenCalledWith(baseInputs, null, comment);
+    expect(mocks.calls).toEqual(['resolve', 'checkout', 'restore']);
   });
 
-  it('fails a comment-triggered review without a GitHub token', async () => {
-    mocks.parseEventContext.mockReturnValue(null);
-    mocks.parseCommentContext.mockReturnValue(comment);
-    mocks.parseInputs.mockReturnValue({ ...baseInputs, githubToken: '' });
+  it('reports a resolution failure without checking out the pull request', async () => {
+    mocks.resolveReviewMode.mockRejectedValue(new Error('resolution failed'));
 
     await importMain();
 
-    expect(mocks.setFailed).toHaveBeenCalledWith(
-      'github_token is required for comment-triggered reviews',
-    );
+    expect(mocks.setFailed).toHaveBeenCalledWith('resolution failed');
     expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'fail');
     expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '1');
-    expect(mocks.authorizeCommentTrigger).not.toHaveBeenCalled();
-    expect(mocks.fetchCommentPullRequest).not.toHaveBeenCalled();
     expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
   });
 
-  it('fails an unauthorized comment without checking out the pull request', async () => {
+  it('skips when no review mode matches without checking out a pull request', async () => {
     mocks.parseEventContext.mockReturnValue(null);
-    mocks.parseCommentContext.mockReturnValue(comment);
-    mocks.authorizeCommentTrigger.mockRejectedValue(
-      new Error(
-        'Commenter trusted-user must have write access to owner/repo; detected permission: read',
-      ),
-    );
+    mocks.resolveReviewMode.mockResolvedValue(null);
 
     await importMain();
 
-    expect(mocks.setFailed).toHaveBeenCalledWith(
-      'Commenter trusted-user must have write access to owner/repo; detected permission: read',
-    );
-    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'fail');
-    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '1');
-    expect(mocks.fetchCommentPullRequest).not.toHaveBeenCalled();
     expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
+    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'skip');
+    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '0');
   });
 
-  it('reports a checkout failure through failure outputs', async () => {
-    mocks.checkoutPullRequestHead.mockRejectedValue(new Error('checkout failed'));
+  it('sends a direct prompt without checking out a pull request', async () => {
+    const inputs = { ...baseInputs, prompt: 'Review this snippet' };
+    mocks.parseInputs.mockReturnValue(inputs);
+    mocks.resolveReviewMode.mockResolvedValue({ kind: 'prompt', prompt: inputs.prompt });
 
     await importMain();
 
-    expect(mocks.setFailed).toHaveBeenCalledWith('checkout failed');
+    expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
+    expect(mocks.prompt).toHaveBeenCalledWith('session', 'Review this snippet');
+  });
+
+  it('reports an unexpected non-Error thrown by review setup', async () => {
+    mocks.parseEventContext.mockImplementation(() => {
+      throw 'payload failed';
+    });
+
+    await importMain();
+
+    expect(mocks.setFailed).toHaveBeenCalledWith('Unexpected error: payload failed');
     expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'fail');
     expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '1');
   });

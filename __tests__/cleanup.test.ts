@@ -24,8 +24,8 @@ async function runPost(): Promise<void> {
   vi.doMock('node:fs', () => ({
     rmSync: vi.fn(),
   }));
-  const { default: promise } = await import('../src/post.js');
-  await promise;
+  const { run } = await import('../src/cleanup.js');
+  await run();
 }
 
 beforeEach(() => {
@@ -74,5 +74,15 @@ describe('post step', () => {
 
     killSpy.mockRestore();
     vi.useRealTimers();
+  });
+
+  it('warns when cleanup throws an unexpected non-Error value', async () => {
+    getState.mockImplementation(() => {
+      throw 'state failed';
+    });
+
+    await runPost();
+
+    expect(core.warning).toHaveBeenCalledWith('Post cleanup error: state failed');
   });
 });

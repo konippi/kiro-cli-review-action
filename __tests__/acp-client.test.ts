@@ -82,7 +82,27 @@ describe('AcpClient', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
-  it('rejects send on JSON-RPC error', async () => {
+  it('resolves a response without a jsonrpc field', async () => {
+    const { proc, stdout } = createMockProcess();
+    proc.on.mockImplementation(() => proc);
+
+    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+    await client.start();
+
+    const response = client.initialize();
+    sendMessage(stdout, '{"id":1,"result":{}}');
+    const timeout = new Promise<never>((_resolve, reject) => {
+      setTimeout(() => reject(new Error('ACP response timed out')), 50);
+    });
+
+    await expect(Promise.race([response, timeout])).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['{"code":-1,"message":"fail"}', 'ACP error -1: fail'],
+    ['"boom"', 'ACP error boom'],
+    ['{"detail":"x"}', 'ACP error {"detail":"x"}'],
+  ])('rejects the pending request on a JSON-RPC error: %s', async (error, message) => {
     const { proc, stdout } = createMockProcess();
     proc.on.mockImplementation(() => proc);
 
@@ -90,9 +110,9 @@ describe('AcpClient', () => {
     await client.start();
 
     const promise = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"fail"}}');
+    sendMessage(stdout, `{"jsonrpc":"2.0","id":1,"error":${error}}`);
 
-    await expect(promise).rejects.toThrow('ACP error -1: fail');
+    await expect(promise).rejects.toThrow(message);
   });
 
   it('tracks tool calls and returns result from prompt', async () => {
@@ -135,19 +155,22 @@ describe('AcpClient', () => {
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
-  it('ignores non-JSON lines', async () => {
-    const { proc, stdout } = createMockProcess();
-    proc.on.mockImplementation(() => proc);
+  it.each(['not json at all', '42', '{"jsonrpc":"2.0","id":"1","result":{}}'])(
+    'ignores lines that cannot complete a request: %s',
+    async (line) => {
+      const { proc, stdout } = createMockProcess();
+      proc.on.mockImplementation(() => proc);
 
-    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
-    await client.start();
+      const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+      await client.start();
 
-    stdout.push('not json at all\n');
+      sendMessage(stdout, line);
 
-    const initP = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
-    await expect(initP).resolves.toBeUndefined();
-  });
+      const initP = client.initialize();
+      sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
+      await expect(initP).resolves.toBeUndefined();
+    },
+  );
 
   it('rejects pending promises when process exits', async () => {
     const { proc } = createMockProcess();
@@ -179,18 +202,20 @@ describe('AcpClient', () => {
     await expect(sessP).rejects.toThrow('session/new response missing sessionId');
   });
 
-  it('ignores session/update with no update field', async () => {
-    const { proc, stdout } = createMockProcess();
-    proc.on.mockImplementation(() => proc);
+  it.each(['{"sessionId":"s1"}', '{"sessionId":"s1","update":"invalid"}'])(
+    'ignores session/update with an unusable update: %s',
+    async (params) => {
+      const { proc, stdout } = createMockProcess();
+      proc.on.mockImplementation(() => proc);
 
-    const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
-    await client.start();
+      const client = new AcpClient('/usr/bin/kiro-cli', false, 'key');
+      await client.start();
 
-    // Notification with no update field — should not throw
-    sendMessage(stdout, '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1"}}');
+      sendMessage(stdout, `{"jsonrpc":"2.0","method":"session/update","params":${params}}`);
 
-    const initP = client.initialize();
-    sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
-    await expect(initP).resolves.toBeUndefined();
-  });
+      const initP = client.initialize();
+      sendMessage(stdout, '{"jsonrpc":"2.0","id":1,"result":{}}');
+      await expect(initP).resolves.toBeUndefined();
+    },
+  );
 });

@@ -10,9 +10,18 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as core from '@actions/core';
-import { SENSITIVE_PATHS } from './constants.js';
+import { isErrnoException } from './errors.js';
 import { git } from './git.js';
 import { type RetryOptions, withRetry } from './retry.js';
+
+/** PR-controlled paths that Kiro loads at startup. Restored from the base branch before Kiro runs. */
+export const SENSITIVE_PATHS = [
+  '.kiro',
+  '.amazonq',
+  'AGENTS.md',
+  'README.md',
+  'AmazonQ.md',
+] as const;
 
 const SNAPSHOT_DIRECTORY = '.kiro-pr';
 const SNAPSHOT_EXCLUSION = '/.kiro-pr/';
@@ -30,10 +39,6 @@ interface SnapshotState {
   totalFiles: number;
   totalBytes: number;
   truncated: boolean;
-}
-
-function isMissingPathError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 function truncateSnapshot(reason: string, state: SnapshotState): void {
@@ -61,7 +66,7 @@ function snapshotConfigPath(
   try {
     sourceStats = lstatSync(source);
   } catch (error: unknown) {
-    if (isMissingPathError(error)) return;
+    if (isErrnoException(error) && error.code === 'ENOENT') return;
 
     throw error;
   }
@@ -160,7 +165,7 @@ function ensureSnapshotExcluded(): void {
   try {
     excludeContents = readFileSync(excludePath, 'utf8');
   } catch (error: unknown) {
-    if (!isMissingPathError(error)) throw error;
+    if (!isErrnoException(error) || error.code !== 'ENOENT') throw error;
   }
 
   const lines = excludeContents.split(/\r?\n/);
