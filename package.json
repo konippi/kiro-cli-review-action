@@ -10,7 +10,7 @@
     "test:unit": "vitest run --exclude \"__tests__/integration/**\"",
     "test:integration": "vitest run __tests__/integration",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc",
+    "typecheck": "tsc --noEmit",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format .",
