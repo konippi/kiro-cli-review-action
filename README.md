@@ -75,7 +75,7 @@ jobs:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
 
-The action handles all event filtering internally — only PR comments containing `@kiro` from users with write access are processed. Non-matching events exit immediately without consuming API credits.
+The action handles all event filtering internally — only PR comments containing `@kiro` from users with write access are processed. Non-matching events exit immediately without consuming API credits. Accepted comments receive a 👀 reaction, which requires `issues: write`.
 
 ## Inputs
 

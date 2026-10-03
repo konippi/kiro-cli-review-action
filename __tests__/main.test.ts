@@ -91,6 +91,7 @@ const comment = {
   owner: 'owner',
   repo: 'repo',
   prNumber: 7,
+  commentId: 1234,
   commenterLogin: 'trusted-user',
   userRequest: 'focus on authentication',
 };
