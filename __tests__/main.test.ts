@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => {
     buildGitAuthEnv: vi.fn(),
     restoreConfigFromBase: vi.fn(),
     prepareAgentConfig: vi.fn(() => 'code-reviewer'),
+    installKiroCli: vi.fn(async () => '/kiro'),
+    installGithubMcpServer: vi.fn(async () => '/mcp'),
+    acpConstructor: vi.fn(),
     prompt: vi.fn(async (_sessionId: string, _promptText: string) => ({ toolCalls: [] })),
   };
 });
@@ -58,14 +61,20 @@ vi.mock('../src/agent-config.js', () => ({
   prepareAgentConfig: mocks.prepareAgentConfig,
 }));
 
-vi.mock('../src/install.js', () => ({
-  installKiroCli: vi.fn(async () => '/kiro'),
-  installGithubMcpServer: vi.fn(async () => '/mcp'),
+vi.mock('../src/setup/kiro-cli.js', () => ({
+  installKiroCli: mocks.installKiroCli,
+}));
+
+vi.mock('../src/setup/github-mcp.js', () => ({
+  installGithubMcpServer: mocks.installGithubMcpServer,
 }));
 
 vi.mock('../src/acp-client.js', () => ({
   AcpClient: class {
     process = { pid: 123 };
+    constructor(binary: string) {
+      mocks.acpConstructor(binary);
+    }
     async start(): Promise<void> {}
     async initialize(): Promise<void> {}
     async createSession(): Promise<string> {
@@ -106,6 +115,7 @@ const baseInputs = {
   maxDiffSize: 10000,
   debug: false,
   githubMcpVersion: '0.32.0',
+  kiroCliVersion: '2.27.1',
 };
 
 async function importMain(): Promise<void> {
@@ -116,6 +126,7 @@ async function importMain(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  process.env.RUNNER_TEMP = '/runner-temp';
   mocks.calls.length = 0;
   mocks.parseInputs.mockReturnValue(baseInputs);
   mocks.parseEventContext.mockReturnValue(target);
@@ -135,6 +146,14 @@ beforeEach(() => {
 });
 
 describe('review mode preparation', () => {
+  it('installs configured versions and passes the Kiro binary to ACP', async () => {
+    await importMain();
+
+    expect(mocks.installKiroCli).toHaveBeenCalledWith('2.27.1', '/runner-temp/kiro-review');
+    expect(mocks.installGithubMcpServer).toHaveBeenCalledWith('0.32.0', '/runner-temp/kiro-review');
+    expect(mocks.acpConstructor).toHaveBeenCalledWith('/kiro');
+  });
+
   it('checks out a PR head, then restores base config with auth', async () => {
     await importMain();
 

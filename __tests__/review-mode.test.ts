@@ -31,6 +31,7 @@ const inputs = {
   maxDiffSize: 10000,
   debug: false,
   githubMcpVersion: '0.32.0',
+  kiroCliVersion: '2.27.1',
 };
 const target = {
   owner: 'test-owner',

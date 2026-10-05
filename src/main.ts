@@ -7,9 +7,10 @@ import { type PullRequestTarget, parseCommentContext, parseEventContext } from '
 import { isErrnoException, toErrorMessage } from './errors.js';
 import { buildGitAuthEnv, checkoutPullRequestHead } from './git.js';
 import { parseInputs } from './inputs.js';
-import { installGithubMcpServer, installKiroCli } from './install.js';
 import { restoreConfigFromBase } from './restore-config.js';
 import { type ReviewMode, resolveReviewMode } from './review-mode.js';
+import { installGithubMcpServer } from './setup/github-mcp.js';
+import { installKiroCli } from './setup/kiro-cli.js';
 
 function setSkip(): void {
   core.setOutput('review_result', 'skip');
@@ -58,10 +59,10 @@ async function review(): Promise<void> {
   }
 
   // Install binaries
-  const installDir = join(process.env.RUNNER_TEMP || '/tmp', 'kiro-review');
+  const installRoot = join(process.env.RUNNER_TEMP || '/tmp', 'kiro-review');
   const [kiroBinary, mcpBinary] = await Promise.all([
-    installKiroCli(),
-    installGithubMcpServer(inputs.githubMcpVersion, installDir),
+    installKiroCli(inputs.kiroCliVersion, installRoot),
+    installGithubMcpServer(inputs.githubMcpVersion, installRoot),
   ]);
 
   // Prepare the agent configuration

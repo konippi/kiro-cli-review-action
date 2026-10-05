@@ -1,4 +1,7 @@
 import * as core from '@actions/core';
+import * as semver from 'semver';
+import { DEFAULT_GITHUB_MCP_VERSION } from './setup/github-mcp.js';
+import { DEFAULT_KIRO_CLI_VERSION } from './setup/kiro-cli.js';
 
 /** Action inputs. */
 export interface ActionInputs {
@@ -11,9 +14,19 @@ export interface ActionInputs {
   readonly maxDiffSize: number;
   readonly debug: boolean;
   readonly githubMcpVersion: string;
+  readonly kiroCliVersion: string;
 }
 
-/** Reads action inputs, validating numeric values. */
+function parseVersionInput(name: string, fallback: string): string {
+  const version = core.getInput(name) || fallback;
+  if (semver.valid(version) !== version || semver.prerelease(version) !== null) {
+    throw new Error(`Input ${name} must be an exact version in X.Y.Z format; received: ${version}`);
+  }
+
+  return version;
+}
+
+/** Reads action inputs, validating numeric and version values. */
 export function parseInputs(): ActionInputs {
   const rawMaxDiffSize = core.getInput('max_diff_size') || '10000';
   const maxDiffSize = Number(rawMaxDiffSize);
@@ -30,6 +43,7 @@ export function parseInputs(): ActionInputs {
     triggerPhrase: core.getInput('trigger_phrase') || '@kiro',
     maxDiffSize,
     debug: core.getInput('debug') === 'true',
-    githubMcpVersion: core.getInput('github_mcp_version'),
+    githubMcpVersion: parseVersionInput('github_mcp_version', DEFAULT_GITHUB_MCP_VERSION),
+    kiroCliVersion: parseVersionInput('kiro_cli_version', DEFAULT_KIRO_CLI_VERSION),
   };
 }

@@ -30,7 +30,27 @@ describe('parseInputs', () => {
       maxDiffSize: 10000,
       debug: false,
       triggerPhrase: '@kiro',
+      githubMcpVersion: '0.32.0',
+      kiroCliVersion: '2.27.1',
     });
+  });
+
+  it.each([
+    ['kiro_cli_version', 'latest'],
+    ['kiro_cli_version', 'v2.27.1'],
+    ['kiro_cli_version', '2.27'],
+    ['kiro_cli_version', '^2.27.0'],
+    ['github_mcp_version', '0.32.0-beta.1'],
+  ])('rejects invalid exact version input %s=%s', (input, value) => {
+    getInput.mockImplementation((name: string) => {
+      if (name === 'kiro_api_key') return 'test-key';
+      if (name === input) return value;
+      return '';
+    });
+
+    expect(() => parseInputs()).toThrow(
+      `Input ${input} must be an exact version in X.Y.Z format; received: ${value}`,
+    );
   });
 
   it('parses explicit input values', () => {
@@ -42,6 +62,8 @@ describe('parseInputs', () => {
         debug: 'true',
         trigger_phrase: '/review',
         model: 'model-id',
+        github_mcp_version: '0.33.0',
+        kiro_cli_version: '2.28.0',
       };
 
       return values[name] ?? '';
@@ -53,6 +75,8 @@ describe('parseInputs', () => {
       debug: true,
       triggerPhrase: '/review',
       model: 'model-id',
+      githubMcpVersion: '0.33.0',
+      kiroCliVersion: '2.28.0',
     });
   });
 
