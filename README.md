@@ -90,6 +90,7 @@ The action handles all event filtering internally — only PR comments containin
 | `max_diff_size` | No | `10000` | Maximum diff size in characters |
 | `debug` | No | `false` | Show full ACP JSON-RPC messages in logs. WARNING: may include tool execution results containing sensitive data. Only enable for debugging in non-sensitive environments |
 | `github_mcp_version` | No | `0.32.0` | github-mcp-server version to install |
+| `kiro_cli_version` | No | `2.27.1` | Kiro CLI version to install |
 
 ## Outputs
 

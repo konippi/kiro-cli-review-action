@@ -33,6 +33,9 @@ inputs:
   github_mcp_version:
     description: 'github-mcp-server version to install'
     default: '0.32.0'
+  kiro_cli_version:
+    description: 'Kiro CLI version to install'
+    default: '2.27.1'
 
 outputs:
   review_result:
