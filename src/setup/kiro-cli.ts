@@ -211,7 +211,6 @@ export async function installKiroCli(version: string, installRoot: string): Prom
   const sha256 = await resolveKiroArtifactSha256(version, artifact.filename);
 
   const url = `${KIRO_CLI_BASE_URL}/${version}/${artifact.filename}`;
-  // The launcher goes last so an interrupted install is never reused.
   const executables = ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) => ({
     source: join(ARCHIVE_BIN_DIRECTORY, name),
     destination: join(binaryDirectory, name),
