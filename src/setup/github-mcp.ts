@@ -1,7 +1,6 @@
-import { existsSync } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { join } from 'node:path';
-import * as core from '@actions/core';
-import { fetchText, installArchive } from './download.js';
+import { fetchText, installTool } from './download.js';
 
 /** Default GitHub MCP server release installed by this action. */
 export const DEFAULT_GITHUB_MCP_VERSION = '0.32.0';
@@ -25,6 +24,17 @@ const DEFAULT_GITHUB_MCP_SHA256: Readonly<Record<GithubMcpAsset, string>> = {
 
 const CHECKSUM_LINE = /^(?<digest>[0-9a-f]{64})\s+(?<name>\S+)$/;
 
+function assertExecutable(path: string): void {
+  try {
+    if (!statSync(path).isFile()) throw new Error(`${path} is not a file`);
+    accessSync(path, constants.X_OK);
+  } catch (error: unknown) {
+    throw new Error(`github-mcp-server verification failed: ${path} is not executable`, {
+      cause: error,
+    });
+  }
+}
+
 async function fetchGithubMcpAssetSha256(
   version: string,
   releaseUrl: string,
@@ -46,40 +56,29 @@ async function fetchGithubMcpAssetSha256(
 }
 
 /** Downloads and installs the configured GitHub MCP server release. */
-export async function installGithubMcpServer(
-  version: string,
-  installRoot: string,
-): Promise<string> {
+export async function installGithubMcpServer(version: string): Promise<string> {
   const platform = process.platform;
   const arch = process.arch;
   if (platform !== 'linux' || (arch !== 'x64' && arch !== 'arm64')) {
     throw new Error(`unsupported runner: ${platform}/${arch}; Linux x64 and arm64 are supported`);
   }
 
-  const binaryDirectory = join(installRoot, 'github-mcp-server', version, arch);
-  const binary = join(binaryDirectory, 'github-mcp-server');
-  if (existsSync(binary)) {
-    core.info(`Reusing github-mcp-server ${version}`);
-    return binary;
-  }
-
   const asset: GithubMcpAsset = `github-mcp-server_${MCP_ASSET_SUFFIX_BY_ARCH[arch]}.tar.gz`;
   const checksumsFile = `github-mcp-server_${version}_checksums.txt`;
   const releaseUrl = `https://github.com/github/github-mcp-server/releases/download/v${version}/`;
-  const sha256 =
-    version === DEFAULT_GITHUB_MCP_VERSION
-      ? DEFAULT_GITHUB_MCP_SHA256[asset]
-      : await fetchGithubMcpAssetSha256(version, releaseUrl, checksumsFile, asset);
-
   const url = `${releaseUrl}${asset}`;
-  core.info(`Installing github-mcp-server ${version} from ${url}`);
-
-  await installArchive(installRoot, {
+  const cacheDirectory = await installTool({
+    tool: 'github-mcp-server',
+    version,
+    archKey: arch,
+    asset,
     url,
-    sha256,
-    executables: [{ source: 'github-mcp-server', destination: binary }],
+    resolveSha256: async () =>
+      version === DEFAULT_GITHUB_MCP_VERSION
+        ? DEFAULT_GITHUB_MCP_SHA256[asset]
+        : fetchGithubMcpAssetSha256(version, releaseUrl, checksumsFile, asset),
+    verify: (directory) => assertExecutable(join(directory, 'github-mcp-server')),
   });
-  core.info(`github-mcp-server ${version} installed and verified`);
 
-  return binary;
+  return join(cacheDirectory, 'github-mcp-server');
 }

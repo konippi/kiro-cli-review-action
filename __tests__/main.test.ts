@@ -149,8 +149,8 @@ describe('review mode preparation', () => {
   it('installs configured versions and passes the Kiro binary to ACP', async () => {
     await importMain();
 
-    expect(mocks.installKiroCli).toHaveBeenCalledWith('2.27.1', '/runner-temp/kiro-review');
-    expect(mocks.installGithubMcpServer).toHaveBeenCalledWith('0.32.0', '/runner-temp/kiro-review');
+    expect(mocks.installKiroCli).toHaveBeenCalledWith('2.27.1');
+    expect(mocks.installGithubMcpServer).toHaveBeenCalledWith('0.32.0');
     expect(mocks.acpConstructor).toHaveBeenCalledWith('/kiro');
   });
 

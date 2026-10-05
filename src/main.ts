@@ -59,10 +59,9 @@ async function review(): Promise<void> {
   }
 
   // Install binaries
-  const installRoot = join(process.env.RUNNER_TEMP || '/tmp', 'kiro-review');
   const [kiroBinary, mcpBinary] = await Promise.all([
-    installKiroCli(inputs.kiroCliVersion, installRoot),
-    installGithubMcpServer(inputs.githubMcpVersion, installRoot),
+    installKiroCli(inputs.kiroCliVersion),
+    installGithubMcpServer(inputs.githubMcpVersion),
   ]);
 
   // Prepare the agent configuration

@@ -1,56 +1,35 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
-  readFileSync,
   rmSync,
-  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
+import * as core from '@actions/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-function stringArray(): string[] {
-  return [];
-}
-
 const mocks = vi.hoisted(() => ({
-  copyFileSync: vi.fn<(source: string, destination: string) => void>(),
-  dispatcher: { name: 'proxy-dispatcher' },
-  execFileSync: vi.fn(),
-  extractedSources: stringArray(),
-  fetch: vi.fn(),
-  randomUUID: vi.fn(() => 'atomic-temp'),
-  rmSync:
-    vi.fn<
-      (path: string, options?: { readonly force?: boolean; readonly recursive?: boolean }) => void
-    >(),
+  cacheDir: vi.fn(),
+  downloadTool: vi.fn(),
+  extractTar: vi.fn(),
+  find: vi.fn(),
+  rm: vi.fn(),
 }));
 
-vi.mock('node:child_process', () => ({ execFileSync: mocks.execFileSync }));
-vi.mock('node:crypto', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:crypto')>();
-
-  return { ...actual, randomUUID: mocks.randomUUID };
-});
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  mocks.rmSync.mockImplementation((path, options) => {
-    if (options) actual.rmSync(path, options);
-    else actual.rmSync(path);
-  });
-
-  return { ...actual, copyFileSync: mocks.copyFileSync, rmSync: mocks.rmSync };
-});
-vi.mock('undici', () => ({
-  EnvHttpProxyAgent: function EnvHttpProxyAgent() {
-    return mocks.dispatcher;
-  },
-  fetch: mocks.fetch,
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  rm: mocks.rm,
+}));
+vi.mock('@actions/tool-cache', () => ({
+  cacheDir: mocks.cacheDir,
+  downloadTool: mocks.downloadTool,
+  extractTar: mocks.extractTar,
+  find: mocks.find,
 }));
 vi.mock('@actions/core', () => ({ info: vi.fn() }));
 
@@ -63,14 +42,15 @@ function temporaryDirectory(): string {
   return directory;
 }
 
-function sha256(content: string): string {
-  return createHash('sha256').update(content).digest('hex');
+function temporaryFile(content: string): string {
+  const path = join(temporaryDirectory(), 'download');
+  writeFileSync(path, content);
+
+  return path;
 }
 
-function responseBody(response: Response): ReadableStream<Uint8Array> {
-  if (!response.body) throw new Error('Expected response body');
-
-  return response.body;
+function sha256(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 async function loadDownload(): Promise<typeof import('../../src/setup/download.js')> {
@@ -80,329 +60,254 @@ async function loadDownload(): Promise<typeof import('../../src/setup/download.j
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  mocks.extractedSources.length = 0;
-  mocks.copyFileSync.mockImplementation((source, destination) => {
-    writeFileSync(destination, readFileSync(source));
+  mocks.rm.mockImplementation(async (path: string) => {
+    rmSync(path, { recursive: true, force: true });
   });
-  mocks.execFileSync.mockImplementation((executable: string, args: readonly string[]) => {
-    const destination = args.at(-1);
-    if (!destination) throw new Error(`Missing ${executable} extraction destination`);
-
-    for (const source of mocks.extractedSources) {
-      const extracted = join(destination, source);
-      mkdirSync(dirname(extracted), { recursive: true });
-      writeFileSync(extracted, source);
-    }
-  });
+  mocks.find.mockReturnValue('');
+  mocks.cacheDir.mockResolvedValue('/tool-cache/tool/1.2.3/x64');
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
 describe('fetchText', () => {
-  it.each([
-    ['succeeds', false],
-    ['fails', true],
-  ])(
-    'cancels the body and preserves a permanent HTTP error when cancellation %s',
-    async (_, fails) => {
-      const response = new Response('failure', { status: 404, statusText: 'Not Found' });
-      const cancel = vi.spyOn(responseBody(response), 'cancel');
-      if (fails) cancel.mockRejectedValue(new Error('cancel failed'));
-      mocks.fetch.mockResolvedValue(response);
-      const { fetchText } = await loadDownload();
-
-      await expect(fetchText('https://example.test/checksum')).rejects.toThrow(
-        'HTTP 404: Not Found',
-      );
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(mocks.fetch).toHaveBeenCalledOnce();
-    },
-  );
-
-  it.each([
-    ['an HTTP 503', () => mocks.fetch.mockResolvedValueOnce(new Response('', { status: 503 }))],
-    [
-      'a network TypeError',
-      () => mocks.fetch.mockRejectedValueOnce(new TypeError('network unavailable')),
-    ],
-  ])('retries %s and passes the proxy dispatcher', async (_, arrangeFailure) => {
-    vi.useFakeTimers();
-    arrangeFailure();
-    mocks.fetch.mockResolvedValueOnce(new Response('checksum', { status: 200 }));
+  it('downloads text and removes the temporary file', async () => {
+    const download = temporaryFile('checksum\n');
+    mocks.downloadTool.mockResolvedValue(download);
     const { fetchText } = await loadDownload();
-    const result = fetchText('https://example.test/checksum');
 
-    await vi.runAllTimersAsync();
-    await expect(result).resolves.toBe('checksum');
-    expect(mocks.fetch).toHaveBeenCalledTimes(2);
-    expect(mocks.fetch).toHaveBeenLastCalledWith('https://example.test/checksum', {
-      dispatcher: mocks.dispatcher,
-    });
+    await expect(fetchText('https://example.test/checksum')).resolves.toBe('checksum\n');
+    expect(mocks.downloadTool).toHaveBeenCalledWith('https://example.test/checksum');
+    expect(existsSync(download)).toBe(false);
+  });
+
+  it('preserves a read rejection when cleanup also rejects', async () => {
+    const download = join(temporaryDirectory(), 'broken-link');
+    symlinkSync(join(temporaryDirectory(), 'missing'), download);
+    expect(lstatSync(download).isSymbolicLink()).toBe(true);
+    mocks.downloadTool.mockResolvedValue(download);
+    mocks.rm.mockRejectedValue(new Error('cleanup failed'));
+    const { fetchText } = await loadDownload();
+
+    await expect(fetchText('https://example.test/checksum')).rejects.toThrow('ENOENT');
+    expect(mocks.rm).toHaveBeenCalledWith(download, { force: true });
+  });
+
+  it('propagates a tool-cache download rejection', async () => {
+    mocks.downloadTool.mockRejectedValue(new Error('HTTP 404: Not Found'));
+    const { fetchText } = await loadDownload();
+
+    await expect(fetchText('https://example.test/checksum')).rejects.toThrow('HTTP 404: Not Found');
+    expect(mocks.rm).not.toHaveBeenCalled();
   });
 });
 
-describe('installArchive', () => {
-  it('does not create a staging directory for a malformed archive URL', async () => {
-    const root = temporaryDirectory();
-    const { installArchive } = await loadDownload();
+describe('installTool', () => {
+  it('reuses a cache hit that passes verification without downloading', async () => {
+    mocks.find.mockReturnValue('/tool-cache/hit');
+    const verify = vi.fn();
+    const { installTool } = await loadDownload();
 
     await expect(
-      installArchive(root, {
-        url: 'not a valid URL',
-        sha256: '0'.repeat(64),
-        executables: [],
+      installTool({
+        tool: 'tool',
+        version: '1.2.3',
+        archKey: 'x64',
+        asset: 'tool.tar.gz',
+        url: 'https://example.test/tool.tar.gz',
+        resolveSha256: async () => '0'.repeat(64),
+        verify,
       }),
-    ).rejects.toThrow();
-    expect(readdirSync(root).filter((entry) => entry.startsWith('staging-'))).toEqual([]);
+    ).resolves.toBe('/tool-cache/hit');
+    expect(mocks.find).toHaveBeenCalledWith('tool', '1.2.3', 'x64');
+    expect(verify).toHaveBeenCalledWith('/tool-cache/hit');
+    expect(core.info).toHaveBeenCalledWith('Reusing tool 1.2.3');
+    expect(mocks.downloadTool).not.toHaveBeenCalled();
   });
 
-  it('installs a tiny tar.gz archive atomically', async () => {
-    const root = temporaryDirectory();
-    const source = join('nested', 'tar-tool');
-    const destination = join(root, 'bin', 'tar-tool');
-    const content = 'tar.gz archive';
-    mocks.extractedSources.push(source);
-    mocks.fetch.mockResolvedValue(new Response(content, { status: 200 }));
-    const { installArchive } = await loadDownload();
+  it('reinstalls a cache hit that fails verification and uses the extraction root', async () => {
+    const archive = temporaryFile('archive');
+    let extractionDirectory: string | undefined;
+    mocks.find.mockReturnValue('/tool-cache/stale');
+    mocks.downloadTool.mockResolvedValue(archive);
+    mocks.extractTar.mockImplementation(async (_archive, destination) => {
+      if (destination === undefined) throw new Error('missing extraction destination');
+      extractionDirectory = destination;
 
-    await installArchive(root, {
-      url: 'https://example.test/archive.tar.gz',
-      sha256: sha256(content),
-      executables: [{ source, destination }],
+      return destination;
     });
-
-    expect(readFileSync(destination, 'utf8')).toBe(source);
-    expect(statSync(destination).mode & 0o777).toBe(0o755);
-    expect(existsSync(`${destination}.atomic-temp`)).toBe(false);
-    expect(readdirSync(root).filter((entry) => entry.startsWith('staging-'))).toEqual([]);
-    expect(execFileSync).toHaveBeenCalledWith('tar', expect.arrayContaining(['xzf']), {
-      stdio: 'pipe',
+    const verify = vi.fn((directory: string) => {
+      if (directory === '/tool-cache/stale') throw new Error('stale cache');
     });
-  });
+    const { installTool } = await loadDownload();
 
-  it('verifies the extracted archive before publishing executables', async () => {
-    const root = temporaryDirectory();
-    const source = join('nested', 'verified-tool');
-    const destination = join(root, 'bin', 'verified-tool');
-    const content = 'verified archive';
-    mocks.extractedSources.push(source);
-    mocks.fetch.mockResolvedValue(new Response(content, { status: 200 }));
-    const verify = vi.fn((extractDirectory: string) => {
-      expect(readFileSync(join(extractDirectory, source), 'utf8')).toBe(source);
-      expect(existsSync(destination)).toBe(false);
-    });
-    const { installArchive } = await loadDownload();
-
-    await installArchive(root, {
-      url: 'https://example.test/archive.tar.gz',
-      sha256: sha256(content),
-      executables: [{ source, destination }],
+    await installTool({
+      tool: 'tool',
+      version: '1.2.3',
+      archKey: 'x64',
+      asset: 'tool.tar.gz',
+      url: 'https://example.test/tool.tar.gz',
+      resolveSha256: async () => sha256('archive'),
       verify,
     });
 
-    expect(verify).toHaveBeenCalledOnce();
-    expect(verify).toHaveBeenCalledWith(expect.stringMatching(/staging-[^/]+\/extract$/));
-    expect(readFileSync(destination, 'utf8')).toBe(source);
+    expect(core.info).toHaveBeenCalledWith('Cached tool 1.2.3 failed verification; reinstalling');
+    expect(mocks.downloadTool).toHaveBeenCalledOnce();
+    expect(extractionDirectory).toBeDefined();
+    if (extractionDirectory === undefined) throw new Error('missing extraction destination');
+    expect(verify).toHaveBeenNthCalledWith(2, extractionDirectory);
+    expect(mocks.cacheDir).toHaveBeenCalledWith(extractionDirectory, 'tool', '1.2.3', 'x64');
   });
 
-  it('leaves destinations untouched and removes staging when verification fails', async () => {
-    const root = temporaryDirectory();
-    const source = 'verified-tool';
-    const destination = join(root, 'bin', 'verified-tool');
-    const content = 'unverified archive';
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, 'existing executable');
-    mocks.extractedSources.push(source);
-    mocks.fetch.mockResolvedValue(new Response(content, { status: 200 }));
-    const { installArchive } = await loadDownload();
+  it('downloads, verifies a joined archive directory, caches, and cleans up', async () => {
+    const archive = temporaryFile('archive');
+    const runnerTemporaryDirectory = temporaryDirectory();
+    vi.stubEnv('RUNNER_TEMP', runnerTemporaryDirectory);
+    let extractionDirectory: string | undefined;
+    mocks.downloadTool.mockResolvedValue(archive);
+    mocks.extractTar.mockImplementation(async (_archive, destination) => {
+      if (destination === undefined) throw new Error('missing extraction destination');
+      extractionDirectory = destination;
+      mkdirSync(join(destination, 'nested', 'bin'), { recursive: true });
+
+      return destination;
+    });
+    const verify = vi.fn();
+    const resolveSha256 = vi.fn(async () => {
+      expect(core.info).toHaveBeenCalledWith(
+        'Installing tool 1.2.3 from https://example.test/tool.tar.gz',
+      );
+
+      return sha256('archive');
+    });
+    const { installTool } = await loadDownload();
 
     await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: sha256(content),
-        executables: [{ source, destination }],
+      installTool({
+        tool: 'tool',
+        version: '1.2.3',
+        archKey: 'x64-gnu',
+        asset: 'tool.tar.gz',
+        url: 'https://example.test/tool.tar.gz',
+        resolveSha256,
+        archiveDirectory: join('nested', 'bin'),
+        verify,
+      }),
+    ).resolves.toBe('/tool-cache/tool/1.2.3/x64');
+    expect(resolveSha256).toHaveBeenCalledOnce();
+    expect(extractionDirectory).toBeDefined();
+    if (extractionDirectory === undefined) throw new Error('missing extraction destination');
+    expect(
+      extractionDirectory.startsWith(join(runnerTemporaryDirectory, 'kiro-tool-extract-')),
+    ).toBe(true);
+    const source = join(extractionDirectory, 'nested', 'bin');
+    expect(mocks.extractTar).toHaveBeenCalledWith(archive, extractionDirectory, [
+      'xz',
+      '--no-same-owner',
+    ]);
+    expect(verify).toHaveBeenCalledWith(source);
+    expect(mocks.cacheDir).toHaveBeenCalledWith(source, 'tool', '1.2.3', 'x64-gnu');
+    expect(core.info).toHaveBeenCalledWith('tool 1.2.3 installed and verified');
+    expect(existsSync(archive)).toBe(false);
+    expect(existsSync(extractionDirectory)).toBe(false);
+  });
+
+  it('uses the declared asset in a checksum mismatch', async () => {
+    const archive = temporaryFile('wrong archive');
+    mocks.downloadTool.mockResolvedValue(archive);
+    const verify = vi.fn();
+    const { installTool } = await loadDownload();
+
+    await expect(
+      installTool({
+        tool: 'tool',
+        version: '1.2.3',
+        archKey: 'x64',
+        asset: 'declared-asset.tar.gz',
+        url: 'https://example.test/releases/download',
+        resolveSha256: async () => '0'.repeat(64),
+        verify,
+      }),
+    ).rejects.toThrow(
+      `SHA256 mismatch for declared-asset.tar.gz: expected ${'0'.repeat(64)}, got ${sha256('wrong archive')}`,
+    );
+    expect(mocks.extractTar).not.toHaveBeenCalled();
+    expect(verify).not.toHaveBeenCalled();
+    expect(mocks.cacheDir).not.toHaveBeenCalled();
+    expect(existsSync(archive)).toBe(false);
+  });
+
+  it('does not cache and cleans up when fresh verification fails', async () => {
+    const archive = temporaryFile('archive');
+    let extractionDirectory: string | undefined;
+    mocks.downloadTool.mockResolvedValue(archive);
+    mocks.extractTar.mockImplementation(async (_archive, destination) => {
+      if (destination === undefined) throw new Error('missing extraction destination');
+      extractionDirectory = destination;
+
+      return destination;
+    });
+    const { installTool } = await loadDownload();
+
+    await expect(
+      installTool({
+        tool: 'tool',
+        version: '1.2.3',
+        archKey: 'x64',
+        asset: 'tool.tar.gz',
+        url: 'https://example.test/tool.tar.gz',
+        resolveSha256: async () => sha256('archive'),
         verify: () => {
-          throw new Error('verification failed');
+          throw new Error('staged version mismatch');
         },
       }),
-    ).rejects.toThrow('verification failed');
-    expect(readFileSync(destination, 'utf8')).toBe('existing executable');
-    expect(mocks.copyFileSync).not.toHaveBeenCalled();
-    expect(readdirSync(root).filter((entry) => entry.startsWith('staging-'))).toEqual([]);
+    ).rejects.toThrow('staged version mismatch');
+    expect(core.info).not.toHaveBeenCalledWith('tool 1.2.3 installed and verified');
+    expect(mocks.cacheDir).not.toHaveBeenCalled();
+    expect(existsSync(archive)).toBe(false);
+    expect(extractionDirectory).toBeDefined();
+    if (extractionDirectory === undefined) throw new Error('missing extraction destination');
+    expect(existsSync(extractionDirectory)).toBe(false);
   });
 
-  it('deletes a mismatched download and throws the expected digest error', async () => {
-    const root = temporaryDirectory();
-    mocks.fetch.mockResolvedValue(new Response('wrong archive', { status: 200 }));
-    const { installArchive } = await loadDownload();
+  it('preserves an extraction error and attempts both cleanups when archive removal fails', async () => {
+    const archive = temporaryFile('archive');
+    const extractionError = new Error('tar failed');
+    const cleanupError = new Error('archive cleanup failed');
+    let extractionDirectory: string | undefined;
+    mocks.downloadTool.mockResolvedValue(archive);
+    mocks.rm.mockRejectedValueOnce(cleanupError);
+    mocks.extractTar.mockImplementation(async (_archive, destination) => {
+      if (destination === undefined) throw new Error('missing extraction destination');
+      extractionDirectory = destination;
+      writeFileSync(join(destination, 'partial'), 'partial archive');
 
-    await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: '0'.repeat(64),
-        executables: [],
-      }),
-    ).rejects.toThrow('SHA256 mismatch for archive.tar.gz');
-    expect(mocks.rmSync).toHaveBeenNthCalledWith(2, expect.stringMatching(/archive\.tar\.gz$/), {
-      force: true,
-    });
-  });
-
-  it('does not mask an archive HTTP 404 when body cancellation fails', async () => {
-    const root = temporaryDirectory();
-    const response = new Response('failure', { status: 404, statusText: 'Not Found' });
-    const cancel = vi
-      .spyOn(responseBody(response), 'cancel')
-      .mockRejectedValue(new Error('cancel failed'));
-    mocks.fetch.mockResolvedValue(response);
-    const { installArchive } = await loadDownload();
-
-    await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: '0'.repeat(64),
-        executables: [],
-      }),
-    ).rejects.toThrow('HTTP 404: Not Found');
-    expect(cancel).toHaveBeenCalledOnce();
-    expect(mocks.fetch).toHaveBeenCalledOnce();
-    expect(mocks.fetch).toHaveBeenCalledWith('https://example.test/archive.tar.gz', {
-      dispatcher: mocks.dispatcher,
-    });
-  });
-
-  it.each([
-    ['HTTP 503', () => mocks.fetch.mockResolvedValueOnce(new Response('', { status: 503 }))],
-    [
-      'network TypeError',
-      () => mocks.fetch.mockRejectedValueOnce(new TypeError('network unavailable')),
-    ],
-  ])(
-    'retries an archive %s and passes the dispatcher to every fetch',
-    async (_, arrangeFailure) => {
-      vi.useFakeTimers();
-      const root = temporaryDirectory();
-      const content = 'archive';
-      arrangeFailure();
-      mocks.fetch.mockResolvedValueOnce(new Response(content, { status: 200 }));
-      const { installArchive } = await loadDownload();
-      const installation = installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: sha256(content),
-        executables: [],
-      });
-
-      await vi.runAllTimersAsync();
-      await expect(installation).resolves.toBeUndefined();
-      expect(mocks.fetch).toHaveBeenCalledTimes(2);
-      for (const call of mocks.fetch.mock.calls) {
-        expect(call).toEqual([
-          'https://example.test/archive.tar.gz',
-          { dispatcher: mocks.dispatcher },
-        ]);
-      }
-    },
-  );
-
-  it('reports an empty archive response body after exhausting retries', async () => {
-    vi.useFakeTimers();
-    const root = temporaryDirectory();
-    const url = 'https://example.test/archive.tar.gz';
-    mocks.fetch.mockResolvedValue(new Response(null, { status: 200 }));
-    const { installArchive } = await loadDownload();
-    const installation = installArchive(root, {
-      url,
-      sha256: '0'.repeat(64),
-      executables: [],
-    });
-    const rejection = expect(installation).rejects.toThrow(`Empty response body for ${url}`);
-
-    await vi.runAllTimersAsync();
-    await rejection;
-    expect(mocks.fetch).toHaveBeenCalledTimes(3);
-  });
-
-  it('propagates non-ENOENT extraction failures', async () => {
-    const root = temporaryDirectory();
-    const extractionError = Object.assign(new Error('spawn tar EACCES'), { code: 'EACCES' });
-    mocks.fetch.mockResolvedValue(new Response('archive', { status: 200 }));
-    mocks.execFileSync.mockImplementation(() => {
       throw extractionError;
     });
-    const { installArchive } = await loadDownload();
+    const { installTool } = await loadDownload();
 
     await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: sha256('archive'),
-        executables: [],
+      installTool({
+        tool: 'tool',
+        version: '1.2.3',
+        archKey: 'x64',
+        asset: 'tool.tar.gz',
+        url: 'https://example.test/tool.tar.gz',
+        resolveSha256: async () => sha256('archive'),
+        verify: () => undefined,
       }),
     ).rejects.toBe(extractionError);
-  });
-
-  it('installs executables in caller-provided order', async () => {
-    const root = temporaryDirectory();
-    const sources = ['companion-one', 'companion-two', 'primary'];
-    mocks.extractedSources.push(...sources);
-    mocks.fetch.mockResolvedValue(new Response('archive', { status: 200 }));
-    const { installArchive } = await loadDownload();
-
-    await installArchive(root, {
-      url: 'https://example.test/archive.tar.gz',
-      sha256: sha256('archive'),
-      executables: sources.map((source) => ({ source, destination: join(root, 'bin', source) })),
-    });
-
-    expect(mocks.copyFileSync.mock.calls.map(([source]) => basename(source))).toEqual(sources);
-  });
-
-  it('removes the temporary executable and staging directory when copying fails', async () => {
-    const root = temporaryDirectory();
-    const destination = join(root, 'bin', 'tool');
-    mocks.extractedSources.push('tool');
-    mocks.fetch.mockResolvedValue(new Response('archive', { status: 200 }));
-    mocks.copyFileSync.mockImplementation((_source, temporary) => {
-      writeFileSync(temporary, 'partial');
-      throw new Error('copy failed');
-    });
-    const { installArchive } = await loadDownload();
-
-    await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: sha256('archive'),
-        executables: [{ source: 'tool', destination }],
-      }),
-    ).rejects.toThrow('copy failed');
-    expect(existsSync(destination)).toBe(false);
-    expect(existsSync(`${destination}.atomic-temp`)).toBe(false);
-    expect(readdirSync(root).filter((entry) => entry.startsWith('staging-'))).toEqual([]);
-  });
-
-  it('turns a missing tar executable into a PATH error', async () => {
-    const root = temporaryDirectory();
-    const spawnError = Object.assign(new Error('spawn tar ENOENT'), { code: 'ENOENT' });
-    mocks.fetch.mockResolvedValue(new Response('archive', { status: 200 }));
-    mocks.execFileSync.mockImplementation(() => {
-      throw spawnError;
-    });
-    const { installArchive } = await loadDownload();
-
-    await expect(
-      installArchive(root, {
-        url: 'https://example.test/archive.tar.gz',
-        sha256: sha256('archive'),
-        executables: [],
-      }),
-    ).rejects.toMatchObject({
-      message: 'Required executable "tar" was not found on PATH',
-      cause: spawnError,
-    });
+    expect(mocks.cacheDir).not.toHaveBeenCalled();
+    expect(existsSync(archive)).toBe(true);
+    expect(extractionDirectory).toBeDefined();
+    if (extractionDirectory === undefined) throw new Error('missing extraction destination');
+    expect(existsSync(extractionDirectory)).toBe(false);
+    expect(mocks.rm).toHaveBeenCalledWith(archive, { recursive: true, force: true });
+    expect(mocks.rm).toHaveBeenCalledWith(extractionDirectory, { recursive: true, force: true });
   });
 });

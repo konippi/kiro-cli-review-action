@@ -1,16 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { isPlainObject } from '../guards.js';
-import { fetchText, installArchive } from './download.js';
+import { fetchText, installTool } from './download.js';
 
 /** Kiro CLI version installed unless kiro_cli_version overrides it. */
 export const DEFAULT_KIRO_CLI_VERSION = '2.27.1';
 
 const KIRO_CLI_BASE_URL = 'https://prod.download.cli.kiro.dev/stable';
-const ARCHIVE_BIN_DIRECTORY = join('kirocli', 'bin');
 
 type SupportedArchitecture = 'x64' | 'arm64';
 type LibcVariant = 'gnu' | 'musl';
@@ -122,16 +119,6 @@ function parseKiroCliVersion(output: string): string | undefined {
   return KIRO_CLI_VERSION_OUTPUT.exec(output)?.groups?.version;
 }
 
-function tryReadKiroCliVersion(launcher: string): string | undefined {
-  if (!existsSync(launcher)) return undefined;
-
-  try {
-    return parseKiroCliVersion(runKiroCliVersion(launcher));
-  } catch {
-    return undefined;
-  }
-}
-
 function assertKiroCliVersion(launcher: string, expected: string): void {
   const output = runKiroCliVersion(launcher);
   const actual = parseKiroCliVersion(output);
@@ -191,15 +178,7 @@ export function selectKiroArtifact(runner: RunnerPlatform): KiroArtifact {
 }
 
 /** Installs and verifies the requested Kiro CLI, reusing only an exact-version installation. */
-export async function installKiroCli(version: string, installRoot: string): Promise<string> {
-  const binaryDirectory = join(homedir(), '.local', 'bin');
-  const binary = join(binaryDirectory, 'kiro-cli');
-
-  if (tryReadKiroCliVersion(binary) === version) {
-    core.info(`Reusing kiro-cli ${version}`);
-    return binary;
-  }
-
+export async function installKiroCli(version: string): Promise<string> {
   const arch = process.arch;
   const artifact = selectKiroArtifact({
     platform: process.platform,
@@ -208,24 +187,17 @@ export async function installKiroCli(version: string, installRoot: string): Prom
   });
   core.info(`Selected ${artifact.filename} for ${arch} (${artifact.variant})`);
 
-  const sha256 = await resolveKiroArtifactSha256(version, artifact.filename);
-
   const url = `${KIRO_CLI_BASE_URL}/${version}/${artifact.filename}`;
-  const executables = ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) => ({
-    source: join(ARCHIVE_BIN_DIRECTORY, name),
-    destination: join(binaryDirectory, name),
-  }));
-  core.info(`Installing kiro-cli ${version} from ${url}`);
-
-  await installArchive(installRoot, {
+  const cacheDirectory = await installTool({
+    tool: 'kiro-cli',
+    version,
+    archKey: `${arch}-${artifact.variant}`,
+    asset: artifact.filename,
     url,
-    sha256,
-    executables,
-    verify: (directory) =>
-      assertKiroCliVersion(join(directory, ARCHIVE_BIN_DIRECTORY, 'kiro-cli'), version),
+    resolveSha256: () => resolveKiroArtifactSha256(version, artifact.filename),
+    archiveDirectory: join('kirocli', 'bin'),
+    verify: (directory) => assertKiroCliVersion(join(directory, 'kiro-cli'), version),
   });
 
-  core.info(`kiro-cli ${version} installed and verified`);
-
-  return binary;
+  return join(cacheDirectory, 'kiro-cli');
 }
