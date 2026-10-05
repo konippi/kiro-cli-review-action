@@ -186,6 +186,57 @@ describe('installArchive', () => {
     });
   });
 
+  it('verifies the extracted archive before publishing executables', async () => {
+    const root = temporaryDirectory();
+    const source = join('nested', 'verified-tool');
+    const destination = join(root, 'bin', 'verified-tool');
+    const content = 'verified archive';
+    mocks.extractedSources.push(source);
+    mocks.fetch.mockResolvedValue(new Response(content, { status: 200 }));
+    const verify = vi.fn((extractDirectory: string) => {
+      expect(readFileSync(join(extractDirectory, source), 'utf8')).toBe(source);
+      expect(existsSync(destination)).toBe(false);
+    });
+    const { installArchive } = await loadDownload();
+
+    await installArchive(root, {
+      url: 'https://example.test/archive.tar.gz',
+      sha256: sha256(content),
+      executables: [{ source, destination }],
+      verify,
+    });
+
+    expect(verify).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledWith(expect.stringMatching(/staging-[^/]+\/extract$/));
+    expect(readFileSync(destination, 'utf8')).toBe(source);
+  });
+
+  it('leaves destinations untouched and removes staging when verification fails', async () => {
+    const root = temporaryDirectory();
+    const source = 'verified-tool';
+    const destination = join(root, 'bin', 'verified-tool');
+    const content = 'unverified archive';
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, 'existing executable');
+    mocks.extractedSources.push(source);
+    mocks.fetch.mockResolvedValue(new Response(content, { status: 200 }));
+    const { installArchive } = await loadDownload();
+
+    await expect(
+      installArchive(root, {
+        url: 'https://example.test/archive.tar.gz',
+        sha256: sha256(content),
+        executables: [{ source, destination }],
+        verify: () => {
+          throw new Error('verification failed');
+        },
+      }),
+    ).rejects.toThrow('verification failed');
+    expect(readFileSync(destination, 'utf8')).toBe('existing executable');
+    expect(mocks.copyFileSync).not.toHaveBeenCalled();
+    expect(readdirSync(root).filter((entry) => entry.startsWith('staging-'))).toEqual([]);
+  });
+
   it('deletes a mismatched download and throws the expected digest error', async () => {
     const root = temporaryDirectory();
     mocks.fetch.mockResolvedValue(new Response('wrong archive', { status: 200 }));

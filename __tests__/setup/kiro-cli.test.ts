@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,7 +59,11 @@ beforeEach(() => {
   mocks.home = temporaryDirectory();
   useRunner();
   mocks.execFileSync.mockReturnValue(`kiro-cli ${KIRO_VERSION}\n`);
-  mocks.installArchive.mockImplementation(async (_installRoot, archive) => {
+  mocks.installArchive.mockImplementation(async (installRoot, archive) => {
+    const extractDirectory = join(installRoot, 'staged-extract');
+    writeBinary(join(extractDirectory, 'kirocli', 'bin', 'kiro-cli'));
+    archive.verify?.(extractDirectory);
+
     for (const executable of archive.executables) writeBinary(executable.destination);
   });
 });
@@ -108,14 +112,33 @@ describe('installKiroCli', () => {
     expect(execFileSync).toHaveBeenCalledWith(binary, ['--version'], {
       encoding: 'utf8',
       timeout: 10_000,
+      killSignal: 'SIGKILL',
     });
     expect(mocks.installArchive).not.toHaveBeenCalled();
     expect(mocks.fetchText).not.toHaveBeenCalled();
   });
 
-  it('installs the default artifact with its embedded checksum and primary binary last', async () => {
+  it('reinstalls when the installed launcher fails to execute', async () => {
+    const installRoot = join(mocks.home, 'install');
+    const binary = join(mocks.home, '.local', 'bin', 'kiro-cli');
+    const executionError = new Error('installed launcher failed');
+    writeBinary(binary);
+    mocks.execFileSync.mockImplementation((launcher: string) => {
+      if (launcher === binary) throw executionError;
+
+      return `kiro-cli ${KIRO_VERSION}\n`;
+    });
+    const { installKiroCli } = await loadKiroCli();
+
+    await expect(installKiroCli(KIRO_VERSION, installRoot)).resolves.toBe(binary);
+    expect(mocks.installArchive).toHaveBeenCalledOnce();
+    expect(readFileSync(binary, 'utf8')).toBe('kiro');
+  });
+
+  it('installs the default artifact, verifies its staged launcher, and publishes primary last', async () => {
     const installRoot = join(mocks.home, 'install');
     const binaryDirectory = join(mocks.home, '.local', 'bin');
+    const stagedBinary = join(installRoot, 'staged-extract', 'kirocli', 'bin', 'kiro-cli');
     const { installKiroCli } = await loadKiroCli();
 
     await expect(installKiroCli(KIRO_VERSION, installRoot)).resolves.toBe(
@@ -139,6 +162,12 @@ describe('installKiroCli', () => {
           destination: join(binaryDirectory, 'kiro-cli'),
         },
       ],
+      verify: expect.any(Function),
+    });
+    expect(execFileSync).toHaveBeenCalledWith(stagedBinary, ['--version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      killSignal: 'SIGKILL',
     });
   });
 
@@ -182,18 +211,34 @@ describe('installKiroCli', () => {
     });
   });
 
-  it('rejects a post-install version mismatch', async () => {
+  it('leaves pre-existing executables untouched when staged version verification fails', async () => {
+    const binaryDirectory = join(mocks.home, '.local', 'bin');
+    const existingExecutables = new Map(
+      ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) => [
+        join(binaryDirectory, name),
+        `existing ${name}`,
+      ]),
+    );
+    for (const [path, content] of existingExecutables) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+    }
     mocks.execFileSync.mockReturnValue('kiro-cli 2.26.0\n');
     const { installKiroCli } = await loadKiroCli();
 
     await expect(installKiroCli(KIRO_VERSION, join(mocks.home, 'install'))).rejects.toThrow(
       `kiro-cli version verification failed: expected ${KIRO_VERSION}, got 2.26.0`,
     );
+    for (const [path, content] of existingExecutables) {
+      expect(readFileSync(path, 'utf8')).toBe(content);
+    }
   });
 
-  it('treats malformed version output as not installed', async () => {
-    const binary = join(mocks.home, '.local', 'bin', 'kiro-cli');
-    writeBinary(binary);
+  it('rejects malformed staged version output without publishing executables', async () => {
+    const binaryDirectory = join(mocks.home, '.local', 'bin');
+    const executablePaths = ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) =>
+      join(binaryDirectory, name),
+    );
     mocks.execFileSync.mockReturnValue('unexpected output');
     const { installKiroCli } = await loadKiroCli();
 
@@ -201,6 +246,44 @@ describe('installKiroCli', () => {
       `kiro-cli version verification failed: expected ${KIRO_VERSION}, got unknown`,
     );
     expect(mocks.installArchive).toHaveBeenCalledOnce();
-    expect(existsSync(binary)).toBe(true);
+    expect(executablePaths.every((path) => !existsSync(path))).toBe(true);
+  });
+
+  it('reports a staged launcher execution failure without publishing executables', async () => {
+    const installRoot = join(mocks.home, 'install');
+    const binaryDirectory = join(mocks.home, '.local', 'bin');
+    const stagedBinary = join(installRoot, 'staged-extract', 'kirocli', 'bin', 'kiro-cli');
+    const executablePaths = ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) =>
+      join(binaryDirectory, name),
+    );
+    const executionError = new Error('staged launcher failed');
+    mocks.execFileSync.mockImplementation((launcher: string) => {
+      if (launcher === stagedBinary) throw executionError;
+
+      return `kiro-cli ${KIRO_VERSION}\n`;
+    });
+    const { installKiroCli } = await loadKiroCli();
+
+    let rejection: unknown;
+    try {
+      await installKiroCli(KIRO_VERSION, installRoot);
+    } catch (error: unknown) {
+      rejection = error;
+    }
+
+    expect(rejection).toBeInstanceOf(Error);
+    if (!(rejection instanceof Error)) throw new Error('Expected installKiroCli to reject');
+
+    expect(rejection.message).toBe(
+      `kiro-cli version verification failed: could not run ${stagedBinary} --version`,
+    );
+    expect(rejection.cause).toBe(executionError);
+    expect(execFileSync).toHaveBeenCalledWith(stagedBinary, ['--version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      killSignal: 'SIGKILL',
+    });
+    expect(mocks.installArchive).toHaveBeenCalledOnce();
+    expect(executablePaths.every((path) => !existsSync(path))).toBe(true);
   });
 });

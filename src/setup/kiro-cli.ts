@@ -10,9 +10,16 @@ import { fetchText, installArchive } from './download.js';
 export const DEFAULT_KIRO_CLI_VERSION = '2.27.1';
 
 const KIRO_CLI_BASE_URL = 'https://prod.download.cli.kiro.dev/stable';
+const ARCHIVE_BIN_DIRECTORY = join('kirocli', 'bin');
 
 type SupportedArchitecture = 'x64' | 'arm64';
 type LibcVariant = 'gnu' | 'musl';
+
+/** A glibc release version, compared on MAJOR.MINOR only. */
+interface GlibcVersion {
+  readonly major: number;
+  readonly minor: number;
+}
 
 const ARTIFACTS = {
   'x64-gnu': {
@@ -40,6 +47,27 @@ const ARTIFACTS = {
 
 type KiroArtifactFilename = (typeof ARTIFACTS)[keyof typeof ARTIFACTS]['filename'];
 
+const DEFAULT_KIRO_CLI_SHA256: Readonly<Record<KiroArtifactFilename, string>> = {
+  'kirocli-x86_64-linux.tar.gz': '3c0d7268a4bfb73f8e827822049978fa578e020b271afc1021c7532602d45d99',
+  'kirocli-aarch64-linux.tar.gz':
+    '33ad5462c3111ba4ef527f1d58bda08a9d1997e0ae73841a7c2ca734ebcba2d0',
+  'kirocli-x86_64-linux-musl.tar.gz':
+    'cb032b322b61b58ef59f6540a50c66d3c7ab4db61dc65fd187325a7d618affe3',
+  'kirocli-aarch64-linux-musl.tar.gz':
+    '2b0811ecf7128c850a0d5396596badf2c85e6e8d307c0d3bcc8674798e11ac64',
+};
+
+// Kiro's glibc builds require at least these runtime versions; older hosts use the musl build.
+const MINIMUM_GLIBC: Readonly<Record<SupportedArchitecture, GlibcVersion>> = {
+  x64: { major: 2, minor: 34 },
+  arm64: { major: 2, minor: 39 },
+};
+
+// glibc reports MAJOR.MINOR; development builds append a third component that is ignored.
+const GLIBC_VERSION = /^(?<major>\d+)\.(?<minor>\d+)/;
+const KIRO_CLI_VERSION_OUTPUT = /^kiro-cli (?<version>\d+\.\d+\.\d+)\s*$/;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
 /** A downloadable Kiro CLI artifact. */
 export interface KiroArtifact {
   readonly filename: KiroArtifactFilename;
@@ -52,33 +80,6 @@ export interface RunnerPlatform {
   readonly arch: string;
   readonly glibcVersion: string | undefined;
 }
-
-const DEFAULT_KIRO_CLI_SHA256: Readonly<Record<KiroArtifactFilename, string>> = {
-  'kirocli-x86_64-linux.tar.gz': '3c0d7268a4bfb73f8e827822049978fa578e020b271afc1021c7532602d45d99',
-  'kirocli-aarch64-linux.tar.gz':
-    '33ad5462c3111ba4ef527f1d58bda08a9d1997e0ae73841a7c2ca734ebcba2d0',
-  'kirocli-x86_64-linux-musl.tar.gz':
-    'cb032b322b61b58ef59f6540a50c66d3c7ab4db61dc65fd187325a7d618affe3',
-  'kirocli-aarch64-linux-musl.tar.gz':
-    '2b0811ecf7128c850a0d5396596badf2c85e6e8d307c0d3bcc8674798e11ac64',
-};
-
-/** A glibc release version, compared on MAJOR.MINOR only. */
-interface GlibcVersion {
-  readonly major: number;
-  readonly minor: number;
-}
-
-// Kiro's glibc builds require at least these runtime versions; older hosts use the musl build.
-const MINIMUM_GLIBC: Readonly<Record<SupportedArchitecture, GlibcVersion>> = {
-  x64: { major: 2, minor: 34 },
-  arm64: { major: 2, minor: 39 },
-};
-
-// glibc reports MAJOR.MINOR; development builds append a third component that is ignored.
-const GLIBC_VERSION = /^(?<major>\d+)\.(?<minor>\d+)/;
-const KIRO_CLI_VERSION_OUTPUT = /^kiro-cli (?<version>\d+\.\d+\.\d+)\s*$/;
-const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 function tryParseGlibcVersion(version: string): GlibcVersion | undefined {
   const groups = GLIBC_VERSION.exec(version)?.groups;
@@ -94,7 +95,7 @@ function isAtLeast(actual: GlibcVersion, minimum: GlibcVersion): boolean {
   );
 }
 
-function glibcVersion(): string | undefined {
+function runtimeGlibcVersion(): string | undefined {
   const report = process.report?.getReport();
   if (!isPlainObject(report) || !isPlainObject(report.header)) return undefined;
 
@@ -103,32 +104,41 @@ function glibcVersion(): string | undefined {
     : undefined;
 }
 
-/** Selects the Linux artifact compatible with the runner architecture and glibc. */
-export function selectKiroArtifact(runner: RunnerPlatform): KiroArtifact {
-  const arch = runner.arch;
-  if (runner.platform !== 'linux' || (arch !== 'x64' && arch !== 'arm64')) {
-    throw new Error(
-      `unsupported runner: ${runner.platform}/${arch}; Linux x64 and arm64 are supported`,
-    );
+function runKiroCliVersion(launcher: string): string {
+  try {
+    return execFileSync(launcher, ['--version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      killSignal: 'SIGKILL',
+    });
+  } catch (error: unknown) {
+    throw new Error(`kiro-cli version verification failed: could not run ${launcher} --version`, {
+      cause: error,
+    });
   }
-
-  const glibc =
-    runner.glibcVersion === undefined ? undefined : tryParseGlibcVersion(runner.glibcVersion);
-  const variant = glibc !== undefined && isAtLeast(glibc, MINIMUM_GLIBC[arch]) ? 'gnu' : 'musl';
-  const artifactKey = `${arch}-${variant}` satisfies keyof typeof ARTIFACTS;
-
-  return ARTIFACTS[artifactKey];
 }
 
-function installedVersion(binary: string): string | undefined {
-  if (!existsSync(binary)) return undefined;
+function parseKiroCliVersion(output: string): string | undefined {
+  return KIRO_CLI_VERSION_OUTPUT.exec(output)?.groups?.version;
+}
+
+function tryReadKiroCliVersion(launcher: string): string | undefined {
+  if (!existsSync(launcher)) return undefined;
 
   try {
-    const output = execFileSync(binary, ['--version'], { encoding: 'utf8', timeout: 10_000 });
-
-    return KIRO_CLI_VERSION_OUTPUT.exec(output)?.groups?.version;
+    return parseKiroCliVersion(runKiroCliVersion(launcher));
   } catch {
     return undefined;
+  }
+}
+
+function assertKiroCliVersion(launcher: string, expected: string): void {
+  const output = runKiroCliVersion(launcher);
+  const actual = parseKiroCliVersion(output);
+  if (actual !== expected) {
+    throw new Error(
+      `kiro-cli version verification failed: expected ${expected}, got ${actual ?? 'unknown'}`,
+    );
   }
 }
 
@@ -154,12 +164,38 @@ async function fetchKiroArtifactSha256(
   return digest;
 }
 
+async function resolveKiroArtifactSha256(
+  version: string,
+  filename: KiroArtifactFilename,
+): Promise<string> {
+  return version === DEFAULT_KIRO_CLI_VERSION
+    ? DEFAULT_KIRO_CLI_SHA256[filename]
+    : fetchKiroArtifactSha256(version, filename);
+}
+
+/** Selects the Linux artifact compatible with the runner architecture and glibc. */
+export function selectKiroArtifact(runner: RunnerPlatform): KiroArtifact {
+  const arch = runner.arch;
+  if (runner.platform !== 'linux' || (arch !== 'x64' && arch !== 'arm64')) {
+    throw new Error(
+      `unsupported runner: ${runner.platform}/${arch}; Linux x64 and arm64 are supported`,
+    );
+  }
+
+  const glibc =
+    runner.glibcVersion === undefined ? undefined : tryParseGlibcVersion(runner.glibcVersion);
+  const variant = glibc !== undefined && isAtLeast(glibc, MINIMUM_GLIBC[arch]) ? 'gnu' : 'musl';
+  const artifactKey = `${arch}-${variant}` satisfies keyof typeof ARTIFACTS;
+
+  return ARTIFACTS[artifactKey];
+}
+
 /** Installs and verifies the requested Kiro CLI, reusing only an exact-version installation. */
 export async function installKiroCli(version: string, installRoot: string): Promise<string> {
   const binaryDirectory = join(homedir(), '.local', 'bin');
   const binary = join(binaryDirectory, 'kiro-cli');
 
-  if (installedVersion(binary) === version) {
+  if (tryReadKiroCliVersion(binary) === version) {
     core.info(`Reusing kiro-cli ${version}`);
     return binary;
   }
@@ -168,32 +204,27 @@ export async function installKiroCli(version: string, installRoot: string): Prom
   const artifact = selectKiroArtifact({
     platform: process.platform,
     arch,
-    glibcVersion: glibcVersion(),
+    glibcVersion: runtimeGlibcVersion(),
   });
   core.info(`Selected ${artifact.filename} for ${arch} (${artifact.variant})`);
 
-  const sha256 =
-    version === DEFAULT_KIRO_CLI_VERSION
-      ? DEFAULT_KIRO_CLI_SHA256[artifact.filename]
-      : await fetchKiroArtifactSha256(version, artifact.filename);
+  const sha256 = await resolveKiroArtifactSha256(version, artifact.filename);
 
   const url = `${KIRO_CLI_BASE_URL}/${version}/${artifact.filename}`;
+  // The launcher goes last so an interrupted install is never reused.
+  const executables = ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) => ({
+    source: join(ARCHIVE_BIN_DIRECTORY, name),
+    destination: join(binaryDirectory, name),
+  }));
   core.info(`Installing kiro-cli ${version} from ${url}`);
+
   await installArchive(installRoot, {
     url,
     sha256,
-    executables: ['kiro-cli-chat', 'kiro-cli-term', 'kiro-cli'].map((name) => ({
-      source: join('kirocli', 'bin', name),
-      destination: join(binaryDirectory, name),
-    })),
+    executables,
+    verify: (directory) =>
+      assertKiroCliVersion(join(directory, ARCHIVE_BIN_DIRECTORY, 'kiro-cli'), version),
   });
-
-  const verifiedVersion = installedVersion(binary);
-  if (verifiedVersion !== version) {
-    throw new Error(
-      `kiro-cli version verification failed: expected ${version}, got ${verifiedVersion ?? 'unknown'}`,
-    );
-  }
 
   core.info(`kiro-cli ${version} installed and verified`);
 

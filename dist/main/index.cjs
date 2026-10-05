@@ -3998,7 +3998,7 @@ var require_webidl = __commonJS({
 var require_util2 = __commonJS({
   "node_modules/.pnpm/undici@6.25.0/node_modules/undici/lib/web/fetch/util.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var zlib = require("node:zlib");
     var { redirectStatusSet, referrerPolicySet: referrerPolicyTokens, badPortsSet } = require_constants3();
     var { getGlobalOrigin } = require_global();
@@ -4686,7 +4686,7 @@ var require_util2 = __commonJS({
       contentRange += isomorphicEncode(`${fullLength}`);
       return contentRange;
     }
-    var InflateStream = class extends Transform2 {
+    var InflateStream = class extends Transform {
       #zlibOptions;
       /** @param {zlib.ZlibOptions} [zlibOptions] */
       constructor(zlibOptions) {
@@ -10974,13 +10974,13 @@ var require_pluralizer = __commonJS({
 var require_pending_interceptors_formatter = __commonJS({
   "node_modules/.pnpm/undici@6.25.0/node_modules/undici/lib/mock/pending-interceptors-formatter.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var { Console } = require("node:console");
     var PERSISTENT = process.versions.icu ? "\u2705" : "Y ";
     var NOT_PERSISTENT = process.versions.icu ? "\u274C" : "N ";
     module2.exports = class PendingInterceptorsFormatter {
       constructor({ disableColors } = {}) {
-        this.transform = new Transform2({
+        this.transform = new Transform({
           transform(chunk, _enc, cb) {
             cb(null, chunk);
           }
@@ -17967,14 +17967,14 @@ var require_util8 = __commonJS({
 var require_eventsource_stream = __commonJS({
   "node_modules/.pnpm/undici@6.25.0/node_modules/undici/lib/web/eventsource/eventsource-stream.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var { isASCIINumber, isValidLastEventId } = require_util8();
     var BOM = [239, 187, 191];
     var LF = 10;
     var CR = 13;
     var COLON = 58;
     var SPACE = 32;
-    var EventSourceStream = class extends Transform2 {
+    var EventSourceStream = class extends Transform {
       /**
        * @type {eventSourceSettings}
        */
@@ -26339,7 +26339,7 @@ var require_webidl2 = __commonJS({
 var require_util10 = __commonJS({
   "node_modules/.pnpm/undici@8.11.2/node_modules/undici/lib/web/fetch/util.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var zlib = require("node:zlib");
     var { redirectStatusSet, referrerPolicyTokens, badPortsSet } = require_constants9();
     var { getGlobalOrigin } = require_global3();
@@ -26933,7 +26933,7 @@ var require_util10 = __commonJS({
       contentRange += isomorphicEncode(`${fullLength}`);
       return contentRange;
     }
-    var InflateStream = class extends Transform2 {
+    var InflateStream = class extends Transform {
       #zlibOptions;
       /** @param {zlib.ZlibOptions} [zlibOptions] */
       constructor(zlibOptions) {
@@ -36378,13 +36378,13 @@ var require_mock_pool2 = __commonJS({
 var require_pending_interceptors_formatter2 = __commonJS({
   "node_modules/.pnpm/undici@8.11.2/node_modules/undici/lib/mock/pending-interceptors-formatter.js"(exports2, module2) {
     "use strict";
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var { Console } = require("node:console");
     var PERSISTENT = process.versions.icu ? "\u2705" : "Y ";
     var NOT_PERSISTENT = process.versions.icu ? "\u274C" : "N ";
     module2.exports = class PendingInterceptorsFormatter {
       constructor({ disableColors } = {}) {
-        this.transform = new Transform2({
+        this.transform = new Transform({
           transform(chunk, _enc, cb) {
             cb(null, chunk);
           }
@@ -48361,7 +48361,7 @@ var require_eventsource_stream2 = __commonJS({
   "node_modules/.pnpm/undici@8.11.2/node_modules/undici/lib/web/eventsource/eventsource-stream.js"(exports2, module2) {
     "use strict";
     var buffer = require("node:buffer");
-    var { Transform: Transform2 } = require("node:stream");
+    var { Transform } = require("node:stream");
     var { isASCIINumber, isValidLastEventId } = require_util14();
     var BOM = [239, 187, 191];
     var LF = 10;
@@ -48408,7 +48408,7 @@ var require_eventsource_stream2 = __commonJS({
       error2.aborted = false;
       return error2;
     }
-    var EventSourceStream = class extends Transform2 {
+    var EventSourceStream = class extends Transform {
       /**
        * @type {eventSourceSettings}
        */
@@ -53899,8 +53899,12 @@ var HttpError = class extends Error {
   }
 };
 async function discardBody(response) {
-  await response.body?.cancel().catch(() => {
-  });
+  await response.body?.cancel().catch(() => void 0);
+}
+async function checkStatus(response) {
+  if (response.ok) return;
+  await discardBody(response);
+  throw new HttpError(response);
 }
 function isRetryableDownloadError(error2) {
   return !(error2 instanceof HttpError) || error2.status >= 500 || error2.status === 408 || error2.status === 429;
@@ -53909,10 +53913,7 @@ async function fetchText(url) {
   return withRetry(
     async () => {
       const response = await (0, import_undici3.fetch)(url, { dispatcher });
-      if (!response.ok) {
-        await discardBody(response);
-        throw new HttpError(response);
-      }
+      await checkStatus(response);
       return response.text();
     },
     { isRetryable: isRetryableDownloadError }
@@ -53924,20 +53925,20 @@ async function downloadVerified(url, destination, expectedSha256) {
       (0, import_node_fs2.rmSync)(destination, { force: true });
       try {
         const response = await (0, import_undici3.fetch)(url, { dispatcher });
-        if (!response.ok) {
-          await discardBody(response);
-          throw new HttpError(response);
-        }
+        await checkStatus(response);
         if (!response.body) throw new Error(`Empty response body for ${url}`);
         const hash = (0, import_node_crypto.createHash)("sha256");
-        const hasher = new import_node_stream.Transform({
-          transform(chunk, _encoding, callback) {
-            hash.update(chunk);
-            callback(null, chunk);
-          }
-        });
         (0, import_node_fs2.mkdirSync)((0, import_node_path2.dirname)(destination), { recursive: true });
-        await (0, import_promises.pipeline)(import_node_stream.Readable.fromWeb(response.body), hasher, (0, import_node_fs2.createWriteStream)(destination));
+        await (0, import_promises.pipeline)(
+          import_node_stream.Readable.fromWeb(response.body),
+          async function* (chunks) {
+            for await (const chunk of chunks) {
+              hash.update(chunk);
+              yield chunk;
+            }
+          },
+          (0, import_node_fs2.createWriteStream)(destination)
+        );
         return hash.digest("hex");
       } catch (error2) {
         (0, import_node_fs2.rmSync)(destination, { force: true });
@@ -53988,6 +53989,7 @@ async function installArchive(installRoot, archive) {
     await downloadVerified(archive.url, archivePath, archive.sha256);
     const extractDirectory = (0, import_node_path2.join)(stagingDirectory, "extract");
     extract(archivePath, extractDirectory);
+    archive.verify?.(extractDirectory);
     for (const executable of archive.executables) {
       installExecutable((0, import_node_path2.join)(extractDirectory, executable.source), executable.destination);
     }
@@ -54053,6 +54055,7 @@ var import_node_os = require("node:os");
 var import_node_path4 = require("node:path");
 var DEFAULT_KIRO_CLI_VERSION = "2.27.1";
 var KIRO_CLI_BASE_URL = "https://prod.download.cli.kiro.dev/stable";
+var ARCHIVE_BIN_DIRECTORY = (0, import_node_path4.join)("kirocli", "bin");
 var ARTIFACTS = {
   "x64-gnu": {
     filename: "kirocli-x86_64-linux.tar.gz",
@@ -54092,30 +54095,42 @@ function tryParseGlibcVersion(version) {
 function isAtLeast(actual, minimum) {
   return actual.major > minimum.major || actual.major === minimum.major && actual.minor >= minimum.minor;
 }
-function glibcVersion() {
+function runtimeGlibcVersion() {
   const report = process.report?.getReport();
   if (!isPlainObject(report) || !isPlainObject(report.header)) return void 0;
   return typeof report.header.glibcVersionRuntime === "string" ? report.header.glibcVersionRuntime : void 0;
 }
-function selectKiroArtifact(runner) {
-  const arch2 = runner.arch;
-  if (runner.platform !== "linux" || arch2 !== "x64" && arch2 !== "arm64") {
-    throw new Error(
-      `unsupported runner: ${runner.platform}/${arch2}; Linux x64 and arm64 are supported`
-    );
-  }
-  const glibc = runner.glibcVersion === void 0 ? void 0 : tryParseGlibcVersion(runner.glibcVersion);
-  const variant = glibc !== void 0 && isAtLeast(glibc, MINIMUM_GLIBC[arch2]) ? "gnu" : "musl";
-  const artifactKey = `${arch2}-${variant}`;
-  return ARTIFACTS[artifactKey];
-}
-function installedVersion(binary) {
-  if (!(0, import_node_fs4.existsSync)(binary)) return void 0;
+function runKiroCliVersion(launcher) {
   try {
-    const output = (0, import_node_child_process4.execFileSync)(binary, ["--version"], { encoding: "utf8", timeout: 1e4 });
-    return KIRO_CLI_VERSION_OUTPUT.exec(output)?.groups?.version;
+    return (0, import_node_child_process4.execFileSync)(launcher, ["--version"], {
+      encoding: "utf8",
+      timeout: 1e4,
+      killSignal: "SIGKILL"
+    });
+  } catch (error2) {
+    throw new Error(`kiro-cli version verification failed: could not run ${launcher} --version`, {
+      cause: error2
+    });
+  }
+}
+function parseKiroCliVersion(output) {
+  return KIRO_CLI_VERSION_OUTPUT.exec(output)?.groups?.version;
+}
+function tryReadKiroCliVersion(launcher) {
+  if (!(0, import_node_fs4.existsSync)(launcher)) return void 0;
+  try {
+    return parseKiroCliVersion(runKiroCliVersion(launcher));
   } catch {
     return void 0;
+  }
+}
+function assertKiroCliVersion(launcher, expected) {
+  const output = runKiroCliVersion(launcher);
+  const actual = parseKiroCliVersion(output);
+  if (actual !== expected) {
+    throw new Error(
+      `kiro-cli version verification failed: expected ${expected}, got ${actual ?? "unknown"}`
+    );
   }
 }
 async function fetchKiroArtifactSha256(version, filename) {
@@ -54134,10 +54149,25 @@ async function fetchKiroArtifactSha256(version, filename) {
   }
   return digest;
 }
+async function resolveKiroArtifactSha256(version, filename) {
+  return version === DEFAULT_KIRO_CLI_VERSION ? DEFAULT_KIRO_CLI_SHA256[filename] : fetchKiroArtifactSha256(version, filename);
+}
+function selectKiroArtifact(runner) {
+  const arch2 = runner.arch;
+  if (runner.platform !== "linux" || arch2 !== "x64" && arch2 !== "arm64") {
+    throw new Error(
+      `unsupported runner: ${runner.platform}/${arch2}; Linux x64 and arm64 are supported`
+    );
+  }
+  const glibc = runner.glibcVersion === void 0 ? void 0 : tryParseGlibcVersion(runner.glibcVersion);
+  const variant = glibc !== void 0 && isAtLeast(glibc, MINIMUM_GLIBC[arch2]) ? "gnu" : "musl";
+  const artifactKey = `${arch2}-${variant}`;
+  return ARTIFACTS[artifactKey];
+}
 async function installKiroCli(version, installRoot) {
   const binaryDirectory = (0, import_node_path4.join)((0, import_node_os.homedir)(), ".local", "bin");
   const binary = (0, import_node_path4.join)(binaryDirectory, "kiro-cli");
-  if (installedVersion(binary) === version) {
+  if (tryReadKiroCliVersion(binary) === version) {
     info(`Reusing kiro-cli ${version}`);
     return binary;
   }
@@ -54145,26 +54175,22 @@ async function installKiroCli(version, installRoot) {
   const artifact = selectKiroArtifact({
     platform: process.platform,
     arch: arch2,
-    glibcVersion: glibcVersion()
+    glibcVersion: runtimeGlibcVersion()
   });
   info(`Selected ${artifact.filename} for ${arch2} (${artifact.variant})`);
-  const sha256 = version === DEFAULT_KIRO_CLI_VERSION ? DEFAULT_KIRO_CLI_SHA256[artifact.filename] : await fetchKiroArtifactSha256(version, artifact.filename);
+  const sha256 = await resolveKiroArtifactSha256(version, artifact.filename);
   const url = `${KIRO_CLI_BASE_URL}/${version}/${artifact.filename}`;
+  const executables = ["kiro-cli-chat", "kiro-cli-term", "kiro-cli"].map((name) => ({
+    source: (0, import_node_path4.join)(ARCHIVE_BIN_DIRECTORY, name),
+    destination: (0, import_node_path4.join)(binaryDirectory, name)
+  }));
   info(`Installing kiro-cli ${version} from ${url}`);
   await installArchive(installRoot, {
     url,
     sha256,
-    executables: ["kiro-cli-chat", "kiro-cli-term", "kiro-cli"].map((name) => ({
-      source: (0, import_node_path4.join)("kirocli", "bin", name),
-      destination: (0, import_node_path4.join)(binaryDirectory, name)
-    }))
+    executables,
+    verify: (directory) => assertKiroCliVersion((0, import_node_path4.join)(directory, ARCHIVE_BIN_DIRECTORY, "kiro-cli"), version)
   });
-  const verifiedVersion = installedVersion(binary);
-  if (verifiedVersion !== version) {
-    throw new Error(
-      `kiro-cli version verification failed: expected ${version}, got ${verifiedVersion ?? "unknown"}`
-    );
-  }
   info(`kiro-cli ${version} installed and verified`);
   return binary;
 }

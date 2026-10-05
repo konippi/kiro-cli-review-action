@@ -10,13 +10,27 @@ import {
   rmSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { Readable, Transform } from 'node:stream';
+import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { EnvHttpProxyAgent, fetch, type Response } from 'undici';
 import { isErrnoException } from '../errors.js';
 import { withRetry } from '../retry.js';
 
 const dispatcher = new EnvHttpProxyAgent();
+
+/** An executable to publish from an extracted archive. */
+export interface ArchiveExecutable {
+  readonly source: string;
+  readonly destination: string;
+}
+
+/** An archive to download, verify, and unpack into executables. */
+export interface ArchiveInstall {
+  readonly url: string;
+  readonly sha256: string;
+  readonly executables: ReadonlyArray<ArchiveExecutable>;
+  readonly verify?: (extractDirectory: string) => void;
+}
 
 class HttpError extends Error {
   readonly status: number;
@@ -28,7 +42,13 @@ class HttpError extends Error {
 }
 
 async function discardBody(response: Response): Promise<void> {
-  await response.body?.cancel().catch(() => {});
+  await response.body?.cancel().catch(() => undefined);
+}
+
+async function checkStatus(response: Response): Promise<void> {
+  if (response.ok) return;
+  await discardBody(response);
+  throw new HttpError(response);
 }
 
 // tool-cache policy: statuses below 500 are permanent except 408 and 429.
@@ -46,11 +66,7 @@ export async function fetchText(url: string): Promise<string> {
   return withRetry(
     async () => {
       const response = await fetch(url, { dispatcher });
-      if (!response.ok) {
-        await discardBody(response);
-        throw new HttpError(response);
-      }
-
+      await checkStatus(response);
       return response.text();
     },
     { isRetryable: isRetryableDownloadError },
@@ -68,24 +84,23 @@ async function downloadVerified(
 
       try {
         const response = await fetch(url, { dispatcher });
-        if (!response.ok) {
-          await discardBody(response);
-          throw new HttpError(response);
-        }
+        await checkStatus(response);
 
         // A successful empty response can be a transient proxy/CDN failure, so retry it.
         if (!response.body) throw new Error(`Empty response body for ${url}`);
 
         const hash = createHash('sha256');
-        const hasher = new Transform({
-          transform(chunk: Buffer, _encoding, callback) {
-            hash.update(chunk);
-            callback(null, chunk);
-          },
-        });
-
         mkdirSync(dirname(destination), { recursive: true });
-        await pipeline(Readable.fromWeb(response.body), hasher, createWriteStream(destination));
+        await pipeline(
+          Readable.fromWeb(response.body),
+          async function* (chunks: AsyncIterable<Uint8Array>) {
+            for await (const chunk of chunks) {
+              hash.update(chunk);
+              yield chunk;
+            }
+          },
+          createWriteStream(destination),
+        );
 
         return hash.digest('hex');
       } catch (error: unknown) {
@@ -102,13 +117,6 @@ async function downloadVerified(
       `SHA256 mismatch for ${basename(destination)}: expected ${expectedSha256}, got ${actualSha256}`,
     );
   }
-}
-
-/** An archive to download, verify, and unpack into executables. */
-export interface ArchiveInstall {
-  readonly url: string;
-  readonly sha256: string;
-  readonly executables: ReadonlyArray<{ readonly source: string; readonly destination: string }>;
 }
 
 function createStagingDirectory(installRoot: string): string {
@@ -157,6 +165,7 @@ export async function installArchive(installRoot: string, archive: ArchiveInstal
 
     const extractDirectory = join(stagingDirectory, 'extract');
     extract(archivePath, extractDirectory);
+    archive.verify?.(extractDirectory);
 
     for (const executable of archive.executables) {
       installExecutable(join(extractDirectory, executable.source), executable.destination);
