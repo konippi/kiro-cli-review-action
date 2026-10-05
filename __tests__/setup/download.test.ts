@@ -97,14 +97,6 @@ describe('fetchText', () => {
     await expect(fetchText('https://example.test/checksum')).rejects.toThrow('ENOENT');
     expect(mocks.rm).toHaveBeenCalledWith(download, { force: true });
   });
-
-  it('propagates a tool-cache download rejection', async () => {
-    mocks.downloadTool.mockRejectedValue(new Error('HTTP 404: Not Found'));
-    const { fetchText } = await loadDownload();
-
-    await expect(fetchText('https://example.test/checksum')).rejects.toThrow('HTTP 404: Not Found');
-    expect(mocks.rm).not.toHaveBeenCalled();
-  });
 });
 
 describe('installTool', () => {

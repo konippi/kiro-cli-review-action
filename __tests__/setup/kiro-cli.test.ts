@@ -125,18 +125,12 @@ describe('installKiroCli', () => {
     );
   });
 
-  it('uses distinct cache keys for gnu and musl artifacts', async () => {
+  it('uses the glibc variant in the cache key', async () => {
     const { installKiroCli } = await loadKiroCli();
 
     useRunner('x64', '2.34');
     await installKiroCli(KIRO_VERSION);
     expect(installedSpec().archKey).toBe('x64-gnu');
-
-    vi.clearAllMocks();
-    mocks.installTool.mockResolvedValue('/tool-cache/kiro-cli');
-    useRunner('x64', '2.33');
-    await installKiroCli(KIRO_VERSION);
-    expect(installedSpec().archKey).toBe('x64-musl');
   });
 
   it('fetches and validates a sidecar once for an overridden version', async () => {

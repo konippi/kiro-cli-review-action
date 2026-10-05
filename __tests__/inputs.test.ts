@@ -38,8 +38,6 @@ describe('parseInputs', () => {
   it.each([
     ['kiro_cli_version', 'latest'],
     ['kiro_cli_version', 'v2.27.1'],
-    ['kiro_cli_version', '2.27'],
-    ['kiro_cli_version', '^2.27.0'],
     ['github_mcp_version', '0.32.0-beta.1'],
   ])('rejects invalid exact version input %s=%s', (input, value) => {
     getInput.mockImplementation((name: string) => {

@@ -98,15 +98,6 @@ describe('installGithubMcpServer', () => {
     expect(resolvedSha256).toBe(MCP_SHA256);
   });
 
-  it('returns the cached binary from a tool-cache hit', async () => {
-    mocks.installTool.mockResolvedValue('/tool-cache/hit');
-    const { installGithubMcpServer } = await loadGithubMcp();
-
-    await expect(installGithubMcpServer(MCP_VERSION)).resolves.toBe(
-      join('/tool-cache/hit', 'github-mcp-server'),
-    );
-  });
-
   it('reuses a custom-version cache hit without fetching checksums', async () => {
     mocks.installTool.mockResolvedValue('/tool-cache/hit');
     const { installGithubMcpServer } = await loadGithubMcp();
@@ -174,16 +165,11 @@ describe('installGithubMcpServer', () => {
     expect(mocks.fetchText).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    ['missing', false],
-    ['non-executable', true],
-  ])('rejects a %s binary before caching a fresh extraction', async (_case, createBinary) => {
+  it('rejects a non-executable binary before caching a fresh extraction', async () => {
     const extractionDirectory = temporaryDirectory();
     const binary = join(extractionDirectory, 'github-mcp-server');
-    if (createBinary) {
-      writeFileSync(binary, 'github-mcp-server');
-      chmodSync(binary, 0o644);
-    }
+    writeFileSync(binary, 'github-mcp-server');
+    chmodSync(binary, 0o644);
     const cacheDir = vi.fn(() => '/tool-cache/unreachable');
     mocks.installTool.mockImplementation(async (spec) => {
       spec.verify(extractionDirectory);

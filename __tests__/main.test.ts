@@ -126,7 +126,6 @@ async function importMain(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  process.env.RUNNER_TEMP = '/runner-temp';
   mocks.calls.length = 0;
   mocks.parseInputs.mockReturnValue(baseInputs);
   mocks.parseEventContext.mockReturnValue(target);
