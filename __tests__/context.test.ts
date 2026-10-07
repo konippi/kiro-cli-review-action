@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPullRequestTarget } from './helpers/context.js';
 
 const githubMocks = vi.hoisted(() => {
   const context: {
@@ -39,7 +40,7 @@ function setPullRequestPayload(
 
 function setCommentPayload(
   options: {
-    body?: string;
+    body?: unknown;
     hasPR?: boolean;
     action?: string;
     userType?: string;
@@ -54,7 +55,7 @@ function setCommentPayload(
     action: options.action ?? 'created',
     comment: {
       ...(options.omitId ? {} : { id: 1234 }),
-      body: options.body ?? '@kiro review this',
+      body: options.body === undefined ? '@kiro review this' : options.body,
       author_association: 'NONE',
       user: {
         type: options.userType ?? 'User',
@@ -91,14 +92,7 @@ describe('parseEventContext', () => {
   ])('parses checkout metadata for $name', ({ baseRepo, headRepo, isFork }) => {
     setPullRequestPayload({ baseRepo, headRepo });
 
-    expect(parseEventContext()).toEqual({
-      owner: 'test-owner',
-      repo: 'test-repo',
-      prNumber: 42,
-      baseBranch: 'main',
-      headSha: sha,
-      isFork,
-    });
+    expect(parseEventContext()).toEqual(createPullRequestTarget({ isFork }));
   });
 
   it('returns null outside pull request payloads', () => {
@@ -128,6 +122,18 @@ describe('parseCommentContext', () => {
     });
 
     setCommentPayload({ body: '@kiro' });
+
+    expect(parseCommentContext('@kiro')?.userRequest).toBeNull();
+  });
+
+  it('rejects a non-string comment body', () => {
+    setCommentPayload({ body: { text: '@kiro review this' } });
+
+    expect(parseCommentContext('@kiro')).toBeNull();
+  });
+
+  it('returns a null request when the triggered remainder sanitizes to empty', () => {
+    setCommentPayload({ body: '@kiro <!-- hidden request -->' });
 
     expect(parseCommentContext('@kiro')?.userRequest).toBeNull();
   });

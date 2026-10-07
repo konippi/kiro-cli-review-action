@@ -104,7 +104,16 @@ describe('selectKiroArtifact', () => {
 });
 
 describe('installKiroCli', () => {
-  it('installs the default artifact with a variant-specific cache key', async () => {
+  it('rejects a version just below the minimum before installer work', async () => {
+    const { installKiroCli } = await loadKiroCli();
+
+    await expect(installKiroCli('2.27.0')).rejects.toThrow(
+      'Input kiro_cli_version is not supported: requested 2.27.0; supported versions are >=2.27.1',
+    );
+    expect(mocks.installTool).not.toHaveBeenCalled();
+  });
+
+  it('installs the minimum version artifact with a variant-specific cache key', async () => {
     const { installKiroCli } = await loadKiroCli();
 
     await expect(installKiroCli(KIRO_VERSION)).resolves.toBe('/tool-cache/kiro-cli/kiro-cli');

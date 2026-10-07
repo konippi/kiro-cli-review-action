@@ -1,11 +1,27 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import * as core from '@actions/core';
+import * as semver from 'semver';
 import { isPlainObject } from '../guards.js';
 import { fetchText, installTool } from './download.js';
 
 /** Kiro CLI version installed unless kiro_cli_version overrides it. */
 export const DEFAULT_KIRO_CLI_VERSION = '2.27.1';
+
+const MINIMUM_KIRO_CLI_VERSION = '2.27.1';
+
+/** Throws unless the version is an exact release at or above the supported minimum. */
+export function assertSupportedKiroCliVersion(version: string): void {
+  if (
+    semver.valid(version) !== version ||
+    semver.prerelease(version) !== null ||
+    !semver.gte(version, MINIMUM_KIRO_CLI_VERSION)
+  ) {
+    throw new Error(
+      `Input kiro_cli_version is not supported: requested ${version}; supported versions are >=${MINIMUM_KIRO_CLI_VERSION}`,
+    );
+  }
+}
 
 const KIRO_CLI_BASE_URL = 'https://prod.download.cli.kiro.dev/stable';
 
@@ -65,14 +81,12 @@ const GLIBC_VERSION = /^(?<major>\d+)\.(?<minor>\d+)/;
 const KIRO_CLI_VERSION_OUTPUT = /^kiro-cli (?<version>\d+\.\d+\.\d+)\s*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
-/** A downloadable Kiro CLI artifact. */
-export interface KiroArtifact {
+interface KiroArtifact {
   readonly filename: KiroArtifactFilename;
   readonly variant: LibcVariant;
 }
 
-/** Runner attributes used to select a compatible Kiro CLI artifact. */
-export interface RunnerPlatform {
+interface RunnerPlatform {
   readonly platform: string;
   readonly arch: string;
   readonly glibcVersion: string | undefined;
@@ -179,6 +193,8 @@ export function selectKiroArtifact(runner: RunnerPlatform): KiroArtifact {
 
 /** Installs and verifies the requested Kiro CLI, reusing only an exact-version installation. */
 export async function installKiroCli(version: string): Promise<string> {
+  assertSupportedKiroCliVersion(version);
+
   const arch = process.arch;
   const artifact = selectKiroArtifact({
     platform: process.platform,

@@ -71,9 +71,7 @@ export function parseCommentContext(triggerPhrase: string): CommentContext | nul
   if (!issue.pull_request) return null;
 
   const body = typeof comment.body === 'string' ? comment.body : '';
-  const pattern = new RegExp(
-    `(^|\\s)${triggerPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s.,!?;:]|$)`,
-  );
+  const pattern = new RegExp(`(^|\\s)${RegExp.escape(triggerPhrase)}([\\s.,!?;:]|$)`);
   if (!pattern.test(body)) return null;
 
   const prNumber = issue.number;

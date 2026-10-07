@@ -1,92 +1,134 @@
 import * as core from '@actions/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createActionInputs } from './helpers/inputs.js';
 
 vi.mock('@actions/core', () => ({
+  getBooleanInput: vi.fn(),
   getInput: vi.fn(),
+  setSecret: vi.fn(),
 }));
 
 import { parseInputs } from '../src/inputs.js';
 
+const getBooleanInput = vi.mocked(core.getBooleanInput);
 const getInput = vi.mocked(core.getInput);
+
+function useInputs(values: Readonly<Record<string, string>> = {}): void {
+  getInput.mockImplementation(
+    (name: string) => ({ kiro_api_key: 'test-key', ...values })[name] ?? '',
+  );
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.GITHUB_TOKEN = 'ghs_test';
-  getInput.mockReturnValue('');
-});
-
-afterEach(() => {
-  delete process.env.GITHUB_TOKEN;
+  useInputs();
+  getBooleanInput.mockReturnValue(false);
 });
 
 describe('parseInputs', () => {
-  it('returns defaults when no optional inputs are provided', () => {
-    getInput.mockImplementation((name: string) => (name === 'kiro_api_key' ? 'test-key' : ''));
-
-    expect(parseInputs()).toMatchObject({
-      kiroApiKey: 'test-key',
-      githubToken: 'ghs_test',
-      model: '',
-      maxDiffSize: 10000,
-      debug: false,
-      triggerPhrase: '@kiro',
-      githubMcpVersion: '0.32.0',
-      kiroCliVersion: '2.27.1',
-    });
+  it('reads and masks the required API key first, then returns defaults', () => {
+    expect(parseInputs()).toEqual(createActionInputs({ kiroApiKey: 'test-key', githubToken: '' }));
+    expect(getInput.mock.calls[0]).toEqual(['kiro_api_key', { required: true }]);
+    expect(core.setSecret).toHaveBeenCalledOnce();
+    expect(core.setSecret).toHaveBeenCalledWith('test-key');
   });
 
   it.each([
-    ['kiro_cli_version', 'latest'],
-    ['kiro_cli_version', 'v2.27.1'],
-    ['github_mcp_version', '0.32.0-beta.1'],
-  ])('rejects invalid exact version input %s=%s', (input, value) => {
-    getInput.mockImplementation((name: string) => {
-      if (name === 'kiro_api_key') return 'test-key';
-      if (name === input) return value;
-      return '';
-    });
+    ['kiro_cli_version', '2.27.1', { kiroCliVersion: '2.27.1' }],
+    ['github_mcp_version', '0.23.0', { githubMcpVersion: '0.23.0' }],
+  ])('accepts the minimum supported %s', (input, version, expected) => {
+    useInputs({ [input]: version });
+
+    expect(parseInputs()).toMatchObject(expected);
+  });
+
+  it('rejects kiro_cli_version below the minimum', () => {
+    useInputs({ kiro_cli_version: '2.27.0' });
 
     expect(() => parseInputs()).toThrow(
-      `Input ${input} must be an exact version in X.Y.Z format; received: ${value}`,
+      'Input kiro_cli_version is not supported: requested 2.27.0; supported versions are >=2.27.1',
+    );
+  });
+
+  it('rejects github_mcp_version below the minimum', () => {
+    useInputs({ github_mcp_version: '0.22.0' });
+
+    expect(() => parseInputs()).toThrow(
+      'Input github_mcp_version is not supported: requested 0.22.0; supported versions are >=0.23.0',
+    );
+  });
+
+  it.each(['latest', 'v2.27.1', '2.27.1-beta.1'])('rejects kiro_cli_version %s', (value) => {
+    useInputs({ kiro_cli_version: value });
+
+    expect(() => parseInputs()).toThrow(
+      `Input kiro_cli_version must be an exact version in X.Y.Z format; received: ${value}`,
+    );
+  });
+
+  it('rejects github_mcp_version latest', () => {
+    useInputs({ github_mcp_version: 'latest' });
+
+    expect(() => parseInputs()).toThrow(
+      'Input github_mcp_version must be an exact version in X.Y.Z format; received: latest',
     );
   });
 
   it('parses explicit input values', () => {
-    getInput.mockImplementation((name: string) => {
-      const values: Record<string, string> = {
-        kiro_api_key: 'my-key',
-        github_token: 'my-token',
-        max_diff_size: '5000',
-        debug: 'true',
-        trigger_phrase: '/review',
-        model: 'model-id',
-        github_mcp_version: '0.33.0',
-        kiro_cli_version: '2.28.0',
-      };
-
-      return values[name] ?? '';
+    useInputs({
+      kiro_api_key: 'my-key',
+      github_token: 'my-token',
+      max_diff_size: '5000',
+      trigger_phrase: '/review',
+      model: 'model-id',
     });
 
     expect(parseInputs()).toMatchObject({
       githubToken: 'my-token',
       maxDiffSize: 5000,
-      debug: true,
       triggerPhrase: '/review',
       model: 'model-id',
-      githubMcpVersion: '0.33.0',
-      kiroCliVersion: '2.28.0',
     });
+    expect(core.setSecret).toHaveBeenNthCalledWith(1, 'my-key');
+    expect(core.setSecret).toHaveBeenNthCalledWith(2, 'my-token');
   });
 
-  it.each(['1junk', '1.5', '0'])('rejects max_diff_size %s', (value) => {
-    getInput.mockImplementation((name: string) => {
-      if (name === 'kiro_api_key') return 'test-key';
-      if (name === 'max_diff_size') return value;
-      return '';
-    });
+  it('wires debug through getBooleanInput', () => {
+    getBooleanInput.mockReturnValue(true);
+
+    expect(parseInputs().debug).toBe(true);
+    expect(getBooleanInput).toHaveBeenCalledWith('debug');
+  });
+
+  it.each(['1.5', '0', '9'.repeat(400)])('rejects max_diff_size %s', (value) => {
+    useInputs({ max_diff_size: value });
 
     expect(() => parseInputs()).toThrow(
-      `Input max_diff_size must be a positive integer; received: ${value}`,
+      `Input max_diff_size must be an integer from 1 to ${Number.MAX_SAFE_INTEGER}; received: ${value}`,
+    );
+  });
+
+  it('accepts max_diff_size at its lower boundary', () => {
+    useInputs({ max_diff_size: '1' });
+
+    expect(parseInputs().maxDiffSize).toBe(1);
+  });
+
+  it.each([
+    ['', 10],
+    ['1', 1],
+    ['360', 360],
+  ])('parses timeout_minutes %j as %d', (value, expected) => {
+    useInputs({ timeout_minutes: value });
+
+    expect(parseInputs().timeoutMinutes).toBe(expected);
+  });
+
+  it.each(['0', '361', '1.5'])('rejects timeout_minutes %s', (value) => {
+    useInputs({ timeout_minutes: value });
+
+    expect(() => parseInputs()).toThrow(
+      `Input timeout_minutes must be an integer from 1 to 360; received: ${value}`,
     );
   });
 });

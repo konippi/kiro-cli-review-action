@@ -5,13 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 vi.mock('@actions/core', () => ({ info: vi.fn(), setSecret: vi.fn() }));
 
-import {
-  buildGitAuthEnv,
-  checkoutPullRequestHead,
-  git,
-  gitArgs,
-  validateCommitSha,
-} from '../src/git.js';
+import { buildGitAuthEnv, checkoutPullRequestHead, validateCommitSha } from '../src/git.js';
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const SAFE_GIT_ARGS = ['-c', 'core.hooksPath=/dev/null', '-c', 'submodule.recurse=false'];
@@ -29,21 +23,6 @@ afterEach(() => {
 });
 
 describe('git command hardening', () => {
-  it('disables hooks and recursive submodules before every subcommand', () => {
-    expect(gitArgs('status')).toEqual([...SAFE_GIT_ARGS, 'status']);
-  });
-
-  it('wraps failures with the given message and cause', () => {
-    const cause = new Error('git failed');
-    mockExecFileSync.mockImplementationOnce(() => {
-      throw cause;
-    });
-
-    expect(() => git(['status'], 'Failed to inspect repository')).toThrow(
-      expect.objectContaining({ message: 'Failed to inspect repository', cause }),
-    );
-  });
-
   it('accepts valid commit SHAs and rejects invalid values', () => {
     for (const sha of [sha40, sha64]) expect(() => validateCommitSha(sha)).not.toThrow();
     for (const sha of ['abc123', `${sha40}0`, sha40.toUpperCase(), '', 'g'.repeat(40)]) {

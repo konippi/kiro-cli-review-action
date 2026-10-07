@@ -20,7 +20,7 @@ jobs:
   review:
     name: Code Review
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     if: |
       (github.event_name == 'pull_request' &&
        github.event.pull_request.draft == false &&
@@ -36,4 +36,3 @@ jobs:
         uses: ./
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
-          github_token: ${{ github.token }}

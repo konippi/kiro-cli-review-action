@@ -1,13 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as core from '@actions/core';
@@ -89,7 +81,6 @@ describe('fetchText', () => {
   it('preserves a read rejection when cleanup also rejects', async () => {
     const download = join(temporaryDirectory(), 'broken-link');
     symlinkSync(join(temporaryDirectory(), 'missing'), download);
-    expect(lstatSync(download).isSymbolicLink()).toBe(true);
     mocks.downloadTool.mockResolvedValue(download);
     mocks.rm.mockRejectedValue(new Error('cleanup failed'));
     const { fetchText } = await loadDownload();

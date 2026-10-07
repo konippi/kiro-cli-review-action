@@ -26,7 +26,7 @@ export async function fetchText(url: string): Promise<string> {
   try {
     return await readFile(download, 'utf8');
   } finally {
-    await Promise.allSettled([rm(download, { force: true })]);
+    await rm(download, { force: true }).catch(() => undefined);
   }
 }
 

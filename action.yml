@@ -13,7 +13,7 @@ inputs:
     required: false
     default: ${{ github.token }}
   agent:
-    description: 'Custom agent name (defaults to bundled code-reviewer)'
+    description: 'Agent name in .kiro/agents/<name>.json (default: code-reviewer)'
     required: false
   prompt:
     description: 'Direct prompt to execute. When provided, runs in prompt mode without requiring a PR context.'
@@ -21,14 +21,17 @@ inputs:
   model:
     description: 'Model ID for Kiro CLI (ignored when agent input is specified)'
     required: false
+  timeout_minutes:
+    description: 'Kiro execution timeout in minutes (1-360); keep below the job timeout-minutes'
+    default: '10'
   trigger_phrase:
     description: 'Trigger phrase for comment-based review (e.g. @kiro or /review)'
     default: '@kiro'
   max_diff_size:
-    description: 'Maximum diff size in characters'
+    description: 'Diff size hint in characters for the reviewer (not enforced)'
     default: '10000'
   debug:
-    description: 'Show full ACP JSON-RPC messages in logs. WARNING: may include tool execution results containing sensitive data. Only enable for debugging in non-sensitive environments.'
+    description: 'Log raw stream-json events and Kiro CLI stderr; may expose sensitive tool output'
     default: 'false'
   github_mcp_version:
     description: 'github-mcp-server version to install'
@@ -38,10 +41,8 @@ inputs:
     default: '2.27.1'
 
 outputs:
-  review_result:
-    description: 'Review summary (pass/fail/skip)'
-  exit_code:
-    description: 'kiro-cli exit code (0=success, 1=failure)'
+  conclusion:
+    description: 'Run conclusion: success, skipped, timed_out, mcp_startup_failure, agent_not_loaded, run_error, incomplete, or setup_error'
 
 runs:
   using: 'node24'

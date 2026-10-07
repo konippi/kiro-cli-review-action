@@ -10,8 +10,9 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as core from '@actions/core';
+import type { PullRequestTarget } from './context.js';
 import { isErrnoException } from './errors.js';
-import { git } from './git.js';
+import { buildGitAuthEnv, checkoutPullRequestHead, git } from './git.js';
 import { type RetryOptions, withRetry } from './retry.js';
 
 /** PR-controlled paths that Kiro loads at startup. Restored from the base branch before Kiro runs. */
@@ -21,6 +22,7 @@ export const SENSITIVE_PATHS = [
   'AGENTS.md',
   'README.md',
   'AmazonQ.md',
+  'CONTRIBUTING.md',
 ] as const;
 
 const SNAPSHOT_DIRECTORY = '.kiro-pr';
@@ -200,7 +202,7 @@ export async function restoreConfigFromBase(
   gitEnvironment?: NodeJS.ProcessEnv,
   retryOptions?: RetryOptions,
   limits: SnapshotLimits = {},
-): Promise<readonly string[]> {
+): Promise<void> {
   if (!/^[\w.\-/]+$/.test(baseBranch) || baseBranch.includes('..')) {
     throw new Error(`Invalid branch name: ${baseBranch}`);
   }
@@ -254,6 +256,13 @@ export async function restoreConfigFromBase(
       stdio: 'pipe',
     });
   }
+}
 
-  return SENSITIVE_PATHS;
+/** Checks out the pull request head and restores trusted base configuration. */
+export async function prepareWorkspace(
+  target: PullRequestTarget,
+  githubToken: string,
+): Promise<void> {
+  await checkoutPullRequestHead(target.headSha, githubToken);
+  await restoreConfigFromBase(target.baseBranch, buildGitAuthEnv(process.env, githubToken));
 }

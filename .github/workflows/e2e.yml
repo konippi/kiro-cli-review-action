@@ -15,7 +15,7 @@ jobs:
   test-prompt-mode:
     name: Test Prompt Mode
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
@@ -26,24 +26,18 @@ jobs:
         uses: ./
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
-          github_token: ${{ github.token }}
           prompt: ${{ inputs.test_prompt }}
           debug: 'true'
 
       - name: Verify outputs
+        if: always()
         env:
-          RESULT: ${{ steps.test.outputs.review_result }}
-          EXIT_CODE: ${{ steps.test.outputs.exit_code }}
+          CONCLUSION: ${{ steps.test.outputs.conclusion }}
         run: |
-          echo "review_result: $RESULT"
-          echo "exit_code: $EXIT_CODE"
+          echo "conclusion: $CONCLUSION"
 
-          if [ "$RESULT" = "pass" ]; then
-            echo "✅ Action completed successfully"
-          elif [ "$RESULT" = "fail" ]; then
-            echo "❌ Action failed"
-            exit 1
-          else
-            echo "❌ Unexpected result: $RESULT"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "❌ Expected success conclusion"
             exit 1
           fi
+          echo "✅ Action completed successfully"

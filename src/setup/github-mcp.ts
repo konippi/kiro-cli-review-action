@@ -1,9 +1,25 @@
 import { accessSync, constants, statSync } from 'node:fs';
 import { join } from 'node:path';
+import * as semver from 'semver';
 import { fetchText, installTool } from './download.js';
 
 /** Default GitHub MCP server release installed by this action. */
 export const DEFAULT_GITHUB_MCP_VERSION = '0.32.0';
+
+const MINIMUM_GITHUB_MCP_VERSION = '0.23.0';
+
+/** Throws unless the version is an exact release at or above the supported minimum. */
+export function assertSupportedGithubMcpVersion(version: string): void {
+  if (
+    semver.valid(version) !== version ||
+    semver.prerelease(version) !== null ||
+    !semver.gte(version, MINIMUM_GITHUB_MCP_VERSION)
+  ) {
+    throw new Error(
+      `Input github_mcp_version is not supported: requested ${version}; supported versions are >=${MINIMUM_GITHUB_MCP_VERSION}`,
+    );
+  }
+}
 
 type SupportedGithubMcpArchitecture = 'x64' | 'arm64';
 
@@ -57,6 +73,8 @@ async function fetchGithubMcpAssetSha256(
 
 /** Downloads and installs the configured GitHub MCP server release. */
 export async function installGithubMcpServer(version: string): Promise<string> {
+  assertSupportedGithubMcpVersion(version);
+
   const platform = process.platform;
   const arch = process.arch;
   if (platform !== 'linux' || (arch !== 'x64' && arch !== 'arm64')) {

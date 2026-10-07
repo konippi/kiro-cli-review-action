@@ -1,59 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import { extractUserRequest, MAX_USER_REQUEST_LENGTH, sanitizeComment } from '../src/sanitize.js';
 
-describe('extractUserRequest', () => {
-  it('extracts text after trigger phrase', () => {
-    expect(extractUserRequest('@kiro review security', '@kiro')).toBe('review security');
+describe('sanitizeComment', () => {
+  it.each([
+    ['C0 control', '\u0007'],
+    ['escape', '\u001b'],
+    ['DEL and C1 controls', '\u007f\u0085'],
+    ['zero-width space', '\u200b'],
+    ['byte order mark', '\ufeff'],
+    ['bidirectional override', '\u202e'],
+    ['word joiner', '\u2060'],
+    ['soft hyphen', '\u00ad'],
+    ['tag character', '\u{e0041}'],
+  ])('removes %s characters', (_name, characters) => {
+    expect(sanitizeComment(`before${characters}after`)).toBe('beforeafter');
   });
 
-  it('returns null when no text after trigger', () => {
-    expect(extractUserRequest('@kiro', '@kiro')).toBeNull();
-    expect(extractUserRequest('@kiro   ', '@kiro')).toBeNull();
+  it('preserves visible text and rendered whitespace', () => {
+    const content = 'before\t\n\r<>&lt; ![alt](url) 日本語 😀 after';
+
+    expect(sanitizeComment(content)).toBe(content);
   });
 
-  it('returns null when trigger not found', () => {
-    expect(extractUserRequest('hello world', '@kiro')).toBeNull();
-  });
-
-  it('is case-insensitive', () => {
-    expect(extractUserRequest('@KIRO check this', '@kiro')).toBe('check this');
-  });
-
-  it('truncates to MAX_USER_REQUEST_LENGTH', () => {
-    const long = `@kiro ${'a'.repeat(3000)}`;
-    const result = extractUserRequest(long, '@kiro');
-    expect(result?.length).toBeLessThanOrEqual(MAX_USER_REQUEST_LENGTH);
+  it('removes HTML comments, including unterminated comments', () => {
+    expect(sanitizeComment('hello <!-- hidden --> world')).toBe('hello  world');
+    expect(sanitizeComment('hello <!-- hidden without close')).toBe('hello');
   });
 });
 
-describe('sanitizeComment', () => {
-  it('strips HTML comments', () => {
-    expect(sanitizeComment('hello <!-- hidden --> world')).toBe('hello  world');
+describe('extractUserRequest', () => {
+  it('extracts text after the trigger phrase', () => {
+    expect(extractUserRequest('@kiro review security', '@kiro')).toBe('review security');
   });
 
-  it('strips unclosed HTML comments', () => {
-    expect(sanitizeComment('hello <!-- hidden without close')).toBe('hello');
+  it('returns null when nothing follows the trigger phrase', () => {
+    expect(extractUserRequest('@kiro   ', '@kiro')).toBeNull();
   });
 
-  it('strips zero-width characters', () => {
-    expect(sanitizeComment('he\u200Bllo')).toBe('hello');
-  });
-
-  it('strips markdown image alt text', () => {
-    expect(sanitizeComment('![secret instruction](url)')).toBe('![](url)');
-  });
-
-  it('strips HTML entities', () => {
-    expect(sanitizeComment('&#65; &lt; &gt;')).toBe('');
-  });
-
-  it('strips angle brackets', () => {
-    expect(sanitizeComment('</user_request> ignore')).toBe('/user_request ignore');
-  });
-
-  it('passes through normal text', () => {
-    expect(sanitizeComment('focus on security and performance')).toBe(
-      'focus on security and performance',
+  it('truncates to MAX_USER_REQUEST_LENGTH', () => {
+    expect(extractUserRequest(`@kiro${'a'.repeat(3000)}`, '@kiro')).toBe(
+      'a'.repeat(MAX_USER_REQUEST_LENGTH),
     );
+  });
+
+  it('matches the trigger phrase case-sensitively', () => {
+    expect(extractUserRequest('@Kiro do x', '@kiro')).toBeNull();
   });
 });
