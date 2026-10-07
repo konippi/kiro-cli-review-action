@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import * as core from '@actions/core';
@@ -8,7 +16,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
 import { checkoutPullRequestHead } from '../../src/git.js';
-import { restoreConfigFromBase, SENSITIVE_PATHS } from '../../src/restore-config.js';
+import { restoreConfigFromBase } from '../../src/restore-config.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(
@@ -46,7 +54,10 @@ beforeAll(() => {
   git(originRoot, 'init', '-q', '--bare', '--initial-branch=main', origin);
   mkdirSync(seed);
   git(seed, 'init', '-q', '--initial-branch=main');
-  commitFiles(seed, 'main configuration', { 'README.md': 'base\n' });
+  commitFiles(seed, 'main configuration', {
+    'README.md': 'base\n',
+    'CONTRIBUTING.md': 'trusted base\n',
+  });
 
   git(seed, 'switch', '-q', '-c', 'release/v1');
   commitFiles(seed, 'release configuration', {
@@ -55,11 +66,14 @@ beforeAll(() => {
   });
 
   git(seed, 'switch', '-q', '-c', 'pull-request', 'main');
-  commitFiles(seed, 'pull request', { 'README.md': 'pull request\n' });
+  commitFiles(seed, 'pull request', {
+    'README.md': 'pull request\n',
+    'CONTRIBUTING.md': 'pull request instructions\n',
+  });
   pullRequestHeadSha = git(seed, 'rev-parse', 'HEAD').trim();
 
   git(seed, 'push', '-q', origin, 'main', 'release/v1', 'pull-request');
-});
+}, 30_000);
 
 beforeEach(() => {
   originalCwd = process.cwd();
@@ -85,6 +99,17 @@ describe('base configuration restoration', () => {
 
     expect(git(workspace, 'rev-parse', 'HEAD').trim()).toBe(pullRequestHeadSha);
     expect(() => git(workspace, 'symbolic-ref', '-q', 'HEAD')).toThrow();
+  });
+
+  it('restores and snapshots a PR-modified CONTRIBUTING.md', async () => {
+    await checkoutPullRequestHead(pullRequestHeadSha, '', { minSeconds: 0, maxSeconds: 0 });
+
+    await restoreConfigFromBase('main');
+
+    expect(readFileSync(join(workspace, 'CONTRIBUTING.md'), 'utf8')).toBe('trusted base\n');
+    expect(readFileSync(join(workspace, '.kiro-pr', 'CONTRIBUTING.md'), 'utf8')).toBe(
+      'pull request instructions\n',
+    );
   });
 
   it('restores a non-default base branch in a shallow clone', async () => {
@@ -115,13 +140,12 @@ describe('base configuration restoration', () => {
     mkdirSync(join(workspace, '.amazonq'));
     writeFileSync(join(workspace, '.amazonq', 'untrusted.json'), '{}');
 
-    const restoredPaths = await restoreConfigFromBase('main');
+    await restoreConfigFromBase('main');
 
     expect(existsSync(join(workspace, '.amazonq'))).toBe(false);
     expect(readFileSync(join(workspace, '.kiro-pr', '.amazonq', 'untrusted.json'), 'utf8')).toBe(
       '{}',
     );
-    expect(restoredPaths).toEqual(SENSITIVE_PATHS);
   });
 
   it('throws when checkout fails for a path present on the base', async () => {
@@ -133,17 +157,22 @@ describe('base configuration restoration', () => {
     );
   });
 
-  it('preserves existing exclusions and adds the snapshot exclusion exactly once', async () => {
+  it('deduplicates snapshot exclusions while preserving unrelated lines and order', async () => {
     const excludePath = join(workspace, '.git', 'info', 'exclude');
-    writeFileSync(excludePath, 'existing-pattern\n');
+    writeFileSync(excludePath, 'first\n/.kiro-pr/\nmiddle\n/.kiro-pr/\nlast\n');
 
     await restoreConfigFromBase('main');
+
+    expect(readFileSync(excludePath, 'utf8')).toBe('first\n/.kiro-pr/\nmiddle\nlast\n');
+  });
+
+  it('adds a newline separator when the exclude file has no trailing newline', async () => {
+    const excludePath = join(workspace, '.git', 'info', 'exclude');
+    writeFileSync(excludePath, 'existing-pattern');
+
     await restoreConfigFromBase('main');
 
-    const excludeContents = readFileSync(excludePath, 'utf8');
-    const exclusionLines = excludeContents.split(/\r?\n/).filter((line) => line === '/.kiro-pr/');
-    expect(excludeContents).toContain('existing-pattern\n');
-    expect(exclusionLines).toHaveLength(1);
+    expect(readFileSync(excludePath, 'utf8')).toBe('existing-pattern\n/.kiro-pr/\n');
   });
 
   it('truncates the snapshot at the configured file-count cap', async () => {
@@ -168,5 +197,44 @@ describe('base configuration restoration', () => {
     expect(truncationNotice).toContain('maximum file count (2) would be exceeded');
     expect(core.warning).toHaveBeenCalledTimes(1);
     expect(core.info).toHaveBeenCalledWith('Snapshot: 2 files, 1 placeholders -> .kiro-pr');
+  });
+
+  it('truncates at the byte cap after copying only the first file', async () => {
+    mkdirSync(join(workspace, '.amazonq'));
+    const contents = 'first';
+    const filenames = ['a.json', 'b.json'];
+    for (const filename of filenames) {
+      writeFileSync(join(workspace, '.amazonq', filename), contents);
+    }
+
+    await restoreConfigFromBase('main', undefined, undefined, {
+      maxFiles: Number.MAX_SAFE_INTEGER,
+      maxBytes: Buffer.byteLength(contents),
+    });
+
+    const copiedFiles = filenames.filter((filename) =>
+      existsSync(join(workspace, '.kiro-pr', '.amazonq', filename)),
+    );
+    expect(copiedFiles).toHaveLength(1);
+    expect(
+      readFileSync(join(workspace, '.kiro-pr', '.amazonq', copiedFiles[0] ?? ''), 'utf8'),
+    ).toBe(contents);
+    expect(readFileSync(join(workspace, '.kiro-pr', 'SNAPSHOT_TRUNCATED.txt'), 'utf8')).toContain(
+      `maximum byte count (${Buffer.byteLength(contents)}) would be exceeded`,
+    );
+  });
+
+  it('does not dereference a symlink that hits the file cap and writes a truncation notice', async () => {
+    symlinkSync(join(workspace, 'missing-target'), join(workspace, '.kiro'));
+
+    await restoreConfigFromBase('main', undefined, undefined, {
+      maxFiles: 0,
+      maxBytes: Number.MAX_SAFE_INTEGER,
+    });
+
+    expect(existsSync(join(workspace, '.kiro-pr', '.kiro'))).toBe(false);
+    expect(readFileSync(join(workspace, '.kiro-pr', 'SNAPSHOT_TRUNCATED.txt'), 'utf8')).toContain(
+      'maximum file count (0) would be exceeded',
+    );
   });
 });

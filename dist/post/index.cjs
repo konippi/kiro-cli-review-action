@@ -19085,34 +19085,122 @@ function toErrorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-// src/cleanup.ts
-var SIGTERM_GRACE_MS = 5e3;
-function killProcess(pid) {
+// src/kiro/runner.ts
+var SIGTERM_GRACE_MS = 15e3;
+var STDERR_TAIL_LIMIT = 8 * 1024;
+function signalProcessGroup(pid, signal, leaderClosed) {
+  if (!pid) return false;
   try {
-    process.kill(pid, "SIGTERM");
+    process.kill(-pid, signal);
+    return true;
   } catch {
+    if (leaderClosed) return false;
+    try {
+      process.kill(pid, signal);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+function isProcessGroupAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function createTermination(pid, graceMs) {
+  return {
+    pid,
+    graceMs,
+    leaderClosed: false,
+    terminating: false,
+    escalated: false,
+    escalationTimer: void 0,
+    pollTimer: void 0,
+    onEscalation: void 0,
+    onGroupExit: void 0
+  };
+}
+function terminateGroup(termination) {
+  if (termination.terminating) return true;
+  termination.terminating = true;
+  const delivered = signalProcessGroup(termination.pid, "SIGTERM", termination.leaderClosed);
+  termination.escalationTimer = setTimeout(() => escalate(termination), termination.graceMs);
+  return delivered;
+}
+function isGroupAlive(termination) {
+  return isProcessGroupAlive(termination.pid);
+}
+function waitForEscalation(termination, onEscalation) {
+  termination.onEscalation = onEscalation;
+}
+function disposeTermination(termination) {
+  if (termination.escalationTimer) clearTimeout(termination.escalationTimer);
+  if (termination.pollTimer) clearTimeout(termination.pollTimer);
+  termination.escalationTimer = void 0;
+  termination.pollTimer = void 0;
+  termination.onEscalation = void 0;
+  termination.onGroupExit = void 0;
+}
+function escalate(termination) {
+  termination.escalationTimer = void 0;
+  termination.escalated = true;
+  signalProcessGroup(termination.pid, "SIGKILL", termination.leaderClosed);
+  termination.onEscalation?.();
+  termination.onEscalation = void 0;
+  if (termination.onGroupExit) pollForGroupExit(termination);
+}
+function pollForGroupExit(termination) {
+  if (!termination.onGroupExit) return;
+  if (isGroupAlive(termination)) {
+    termination.pollTimer = setTimeout(() => {
+      termination.pollTimer = void 0;
+      pollForGroupExit(termination);
+    }, 10);
     return;
   }
-  setTimeout(() => {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-    }
-  }, SIGTERM_GRACE_MS);
+  const onGroupExit = termination.onGroupExit;
+  termination.onGroupExit = void 0;
+  onGroupExit();
 }
-async function cleanup() {
-  const acpPid = getState("acp_pid");
-  if (acpPid) {
-    const pid = Number.parseInt(acpPid, 10);
-    if (!Number.isNaN(pid) && pid > 0) {
-      info(`Terminating ACP process (PID: ${pid})`);
-      killProcess(pid);
-    }
+
+// src/state.ts
+var KIRO_PID_STATE = "kiro_pid";
+function getKiroPid() {
+  const state = getState(KIRO_PID_STATE);
+  if (!/^[1-9]\d*$/.test(state)) return void 0;
+  const pid = Number(state);
+  if (!Number.isSafeInteger(pid) || pid <= 1) return void 0;
+  return pid;
+}
+
+// src/cleanup.ts
+async function terminateProcess(pid) {
+  const termination = createTermination(pid, SIGTERM_GRACE_MS);
+  if (!terminateGroup(termination)) {
+    disposeTermination(termination);
+    return;
   }
+  await new Promise((resolve) => waitForEscalation(termination, resolve));
+  disposeTermination(termination);
+}
+function removeBestEffort(path) {
   try {
-    (0, import_node_fs.rmSync)(".kiro-pr", { recursive: true, force: true });
+    (0, import_node_fs.rmSync)(path, { recursive: true, force: true });
   } catch {
   }
+}
+async function cleanup() {
+  const pid = getKiroPid();
+  if (pid) {
+    info(`Terminating Kiro process group (PID: ${pid})`);
+    await terminateProcess(pid);
+  }
+  removeBestEffort(".kiro-pr");
   info("Cleanup complete");
 }
 async function run() {

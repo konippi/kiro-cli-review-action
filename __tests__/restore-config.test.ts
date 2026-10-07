@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const workspaceMocks = vi.hoisted(() => {
+  const calls: string[] = [];
+
+  return {
+    calls,
+    buildGitAuthEnv: vi.fn(),
+    checkoutPullRequestHead: vi.fn(),
+  };
+});
+
 vi.mock('node:child_process', () => ({ execFileSync: vi.fn() }));
 vi.mock('node:fs', () => ({
   copyFileSync: vi.fn(),
@@ -16,12 +26,21 @@ vi.mock('node:fs', () => ({
   rmSync: vi.fn(),
   writeFileSync: vi.fn(),
 }));
+vi.mock('../src/git.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/git.js')>();
+  return {
+    ...actual,
+    buildGitAuthEnv: workspaceMocks.buildGitAuthEnv,
+    checkoutPullRequestHead: workspaceMocks.checkoutPullRequestHead,
+  };
+});
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
 import { execFileSync } from 'node:child_process';
 import { lstatSync, rmSync } from 'node:fs';
 import * as core from '@actions/core';
-import { restoreConfigFromBase, SENSITIVE_PATHS } from '../src/restore-config.js';
+import { prepareWorkspace, restoreConfigFromBase, SENSITIVE_PATHS } from '../src/restore-config.js';
+import { createPullRequestTarget } from './helpers/context.js';
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const mockLstatSync = vi.mocked(lstatSync);
@@ -34,6 +53,7 @@ function gitCommand(args: readonly string[] | null | undefined): string | undefi
 
 beforeEach(() => {
   vi.resetAllMocks();
+  workspaceMocks.calls.length = 0;
   mockExecFileSync.mockImplementation((_file, args) =>
     gitCommand(args) === 'rev-parse' ? '.git\n' : Buffer.alloc(0),
   );
@@ -109,9 +129,7 @@ describe('restoreConfigFromBase', () => {
       return Buffer.alloc(0);
     });
 
-    await expect(restoreConfigFromBase('main', undefined, NO_WAIT)).resolves.toEqual(
-      SENSITIVE_PATHS,
-    );
+    await restoreConfigFromBase('main', undefined, NO_WAIT);
 
     expect(
       mockExecFileSync.mock.calls.filter(([, args]) => gitCommand(args) === 'checkout'),
@@ -172,6 +190,15 @@ describe('restoreConfigFromBase', () => {
     ).toHaveLength(2);
   });
 
+  it('propagates lstat errors other than ENOENT', async () => {
+    const denied = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    mockLstatSync.mockImplementation(() => {
+      throw denied;
+    });
+
+    await expect(restoreConfigFromBase('main', undefined, NO_WAIT)).rejects.toBe(denied);
+  });
+
   it('deletes PR-controlled paths before fetching the base branch', async () => {
     await restoreConfigFromBase('main', undefined, NO_WAIT);
     const firstSensitiveDelete = vi
@@ -182,6 +209,41 @@ describe('restoreConfigFromBase', () => {
     expect(fetch).toBeGreaterThanOrEqual(0);
     expect(vi.mocked(rmSync).mock.invocationCallOrder[firstSensitiveDelete]).toBeLessThan(
       mockExecFileSync.mock.invocationCallOrder[fetch] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+});
+
+describe('prepareWorkspace', () => {
+  it('checks out the head before restoring the base with authenticated git', async () => {
+    const target = createPullRequestTarget();
+    const gitEnvironment = { SAFE: 'true' };
+    workspaceMocks.checkoutPullRequestHead.mockImplementationOnce(async () => {
+      workspaceMocks.calls.push('checkout');
+    });
+    workspaceMocks.buildGitAuthEnv.mockImplementationOnce(() => {
+      workspaceMocks.calls.push('auth');
+      return gitEnvironment;
+    });
+
+    await prepareWorkspace(target, 'github-token');
+
+    expect(workspaceMocks.calls).toEqual(['checkout', 'auth']);
+    expect(workspaceMocks.checkoutPullRequestHead).toHaveBeenCalledWith(
+      target.headSha,
+      'github-token',
+    );
+    expect(workspaceMocks.buildGitAuthEnv).toHaveBeenCalledWith(process.env, 'github-token');
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      [
+        ...SAFE_GIT_ARGS,
+        'fetch',
+        'origin',
+        `+refs/heads/${target.baseBranch}:refs/remotes/origin/${target.baseBranch}`,
+        '--depth=1',
+        '--no-recurse-submodules',
+      ],
+      { encoding: 'utf8', stdio: 'inherit', env: gitEnvironment },
     );
   });
 });

@@ -1,87 +1,104 @@
+import { rmSync } from 'node:fs';
+import * as core from '@actions/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { run } from '../src/cleanup.js';
+import { getKiroPid } from '../src/state.js';
 
-vi.mock('node:fs', () => ({
-  rmSync: vi.fn(),
-}));
-
+vi.mock('node:fs', () => ({ rmSync: vi.fn() }));
 vi.mock('@actions/core', () => ({
-  getState: vi.fn(),
   info: vi.fn(),
   warning: vi.fn(),
 }));
+vi.mock('../src/state.js', () => ({
+  getKiroPid: vi.fn(),
+}));
 
-import * as core from '@actions/core';
+const readKiroPid = vi.mocked(getKiroPid);
 
-const getState = vi.mocked(core.getState);
-
-async function runPost(): Promise<void> {
-  vi.resetModules();
-  vi.doMock('@actions/core', () => ({
-    getState,
-    info: vi.mocked(core.info),
-    warning: vi.mocked(core.warning),
-  }));
-  vi.doMock('node:fs', () => ({
-    rmSync: vi.fn(),
-  }));
-  const { run } = await import('../src/cleanup.js');
+async function runCleanup(): Promise<void> {
   await run();
 }
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.clearAllMocks();
+  readKiroPid.mockReturnValue(undefined);
 });
 
-describe('post step', () => {
-  it('skips kill when no PID in state', async () => {
-    getState.mockReturnValue('');
-    await runPost();
-    expect(core.info).toHaveBeenCalledWith('Cleanup complete');
-  });
-
-  it('attempts to kill process when PID is in state', async () => {
-    getState.mockReturnValue('99999');
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
-    await runPost();
-    expect(killSpy).toHaveBeenCalledWith(99999, 'SIGTERM');
-    killSpy.mockRestore();
-  });
-
-  it('handles already-dead process gracefully', async () => {
-    getState.mockReturnValue('99999');
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
-      throw new Error('ESRCH');
-    });
-    await runPost();
-    expect(core.info).toHaveBeenCalledWith('Cleanup complete');
-    killSpy.mockRestore();
-  });
-
-  it('escalates to SIGKILL after SIGTERM', async () => {
+describe('post cleanup', () => {
+  it('kills the process group with SIGTERM then SIGKILL after the grace period', async () => {
     vi.useFakeTimers();
-    getState.mockReturnValue('99999');
-    const calls: string[] = [];
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
-      calls.push(String(signal));
-      return true;
-    });
+    readKiroPid.mockReturnValue(1234);
+    const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-    await runPost();
-    expect(calls).toContain('SIGTERM');
+    const cleanup = runCleanup();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await cleanup;
 
-    vi.advanceTimersByTime(6000);
-    expect(calls).toContain('SIGKILL');
-
-    killSpy.mockRestore();
+    expect(kill).toHaveBeenNthCalledWith(1, -1234, 'SIGTERM');
+    expect(kill).toHaveBeenNthCalledWith(2, -1234, 'SIGKILL');
+    kill.mockRestore();
     vi.useRealTimers();
   });
 
-  it('warns when cleanup throws an unexpected non-Error value', async () => {
-    getState.mockImplementation(() => {
+  it('falls back to signaling the leader when group signaling fails', async () => {
+    vi.useFakeTimers();
+    readKiroPid.mockReturnValue(1234);
+    const kill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid < 0) throw new Error('no group');
+      return true;
+    });
+
+    const cleanup = runCleanup();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await cleanup;
+
+    expect(kill).toHaveBeenCalledWith(1234, 'SIGTERM');
+    expect(kill).toHaveBeenCalledWith(1234, 'SIGKILL');
+    kill.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('does not wait or send SIGKILL when both SIGTERM targets are already gone', async () => {
+    vi.useFakeTimers();
+    readKiroPid.mockReturnValue(1234);
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('process gone'), { code: 'ESRCH' });
+    });
+
+    await runCleanup();
+
+    expect(kill).toHaveBeenCalledTimes(2);
+    expect(kill).toHaveBeenNthCalledWith(1, -1234, 'SIGTERM');
+    expect(kill).toHaveBeenNthCalledWith(2, 1234, 'SIGTERM');
+    expect(kill).not.toHaveBeenCalledWith(expect.any(Number), 'SIGKILL');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(core.info).toHaveBeenCalledWith('Cleanup complete');
+    kill.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('removes the review workspace', async () => {
+    await runCleanup();
+
+    expect(rmSync).toHaveBeenCalledWith('.kiro-pr', { recursive: true, force: true });
+  });
+
+  it('ignores file removal failures', async () => {
+    vi.mocked(rmSync).mockImplementation(() => {
+      throw new Error('busy');
+    });
+
+    await expect(runCleanup()).resolves.toBeUndefined();
+
+    expect(core.info).toHaveBeenCalledWith('Cleanup complete');
+  });
+
+  it('warns when cleanup throws an unexpected value', async () => {
+    readKiroPid.mockImplementation(() => {
       throw 'state failed';
     });
 
-    await runPost();
+    await runCleanup();
 
     expect(core.warning).toHaveBeenCalledWith('Post cleanup error: state failed');
   });

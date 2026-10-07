@@ -35,7 +35,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -65,7 +65,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -75,35 +75,63 @@ jobs:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
 
-The action handles all event filtering internally — only PR comments containing `@kiro` from users with write access are processed. Non-matching events exit immediately without consuming API credits. Accepted comments receive a 👀 reaction, which requires `issues: write`.
+The action handles all event filtering internally. Non-matching events exit immediately without consuming API credits. Accepted comments receive a 👀 reaction, which requires `issues: write`.
 
 ## Inputs
 
 | Input | Required | Default | Description |
-|-------|----------|---------|-------------|
+| ----- | -------- | ------- | ----------- |
 | `kiro_api_key` | Yes | — | Kiro CLI API key ([Kiro Pro/Pro+/Power](https://kiro.dev) subscription required) |
 | `github_token` | No | `${{ github.token }}` | GitHub token for PR checkout, PR metadata, and the GitHub MCP server |
-| `agent` | No | bundled `code-reviewer` | Custom agent name |
+| `agent` | No | `code-reviewer` | Agent name in `.kiro/agents/<name>.json` |
 | `model` | No | Kiro CLI default | Model ID for Kiro CLI (ignored when `agent` is specified) |
+| `timeout_minutes` | No | `10` | Kiro execution timeout in minutes (1–360); keep below the job's `timeout-minutes` |
 | `prompt` | No | — | Direct prompt to execute without PR context |
 | `trigger_phrase` | No | `@kiro` | Trigger phrase for comment-based review |
-| `max_diff_size` | No | `10000` | Maximum diff size in characters |
-| `debug` | No | `false` | Show full ACP JSON-RPC messages in logs. WARNING: may include tool execution results containing sensitive data. Only enable for debugging in non-sensitive environments |
+| `max_diff_size` | No | `10000` | Diff size hint in characters for the reviewer (not enforced) |
+| `debug` | No | `false` | Log raw stream-json events and Kiro CLI stderr; may expose sensitive tool output |
 | `github_mcp_version` | No | `0.32.0` | github-mcp-server version to install |
 | `kiro_cli_version` | No | `2.27.1` | Kiro CLI version to install |
+
+`kiro_cli_version` must be at least `2.27.1` and `github_mcp_version` at least `0.23.0`; older releases lack behaviour this action requires.
+
+## Environment variables
+
+Kiro and its MCP servers receive only standard process variables such as `PATH` and `HOME`, plus these workflow variables:
+
+| Variable | Purpose |
+| -------- | ------- |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `http_proxy`, `https_proxy`, `no_proxy` | Proxy for downloads, GitHub API requests, and Kiro/MCP |
+| `SSL_CERT_FILE`, `SSL_CERT_DIR` | Custom CA certificates |
+| `KIRO_DISABLE_TELEMETRY` | Set to `true` to disable Kiro telemetry |
 
 ## Outputs
 
 | Output | Description |
-|--------|-------------|
-| `review_result` | `pass`, `fail`, or `skip` |
-| `exit_code` | `0` (success) or `1` (failure) |
+| ------ | ----------- |
+| `conclusion` | `success`, `skipped`, `timed_out`, `mcp_startup_failure`, `agent_not_loaded`, `run_error`, `incomplete`, or `setup_error` |
+
+The step fails for every conclusion except `success` and `skipped`. Use `steps.<id>.outcome` for success or failure and `steps.<id>.outputs.conclusion` for the reason:
+
+```yaml
+- id: review
+  uses: konippi/kiro-cli-review-action@v1
+  continue-on-error: true
+  with:
+    kiro_api_key: ${{ secrets.KIRO_API_KEY }}
+- if: steps.review.outcome == 'failure'
+  run: echo "Kiro review failed: $CONCLUSION"
+  env:
+    CONCLUSION: ${{ steps.review.outputs.conclusion }}
+```
 
 ## Customization
 
-Place `.kiro/agents/code-reviewer.json` in your repository (on the default branch) to override the default agent configuration.
+Place `.kiro/agents/code-reviewer.json` in your repository (on the base branch) to override the default agent configuration. Custom agents contribute prompt, resources, model, and MCP servers; the tool policy is fixed by the action.
 
-> **Note**: Only files merged to the base branch take effect. PR-authored changes to `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, and `AmazonQ.md` are restored from the base branch before the review runs.
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security model and vulnerability reporting.
 
 ## License
 

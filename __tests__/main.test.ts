@@ -1,124 +1,65 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPullRequestTarget } from './helpers/context.js';
+import { createActionInputs } from './helpers/inputs.js';
+import { createKiroRunResult } from './helpers/run-result.js';
 
 const mocks = vi.hoisted(() => {
   const calls: string[] = [];
 
   return {
     calls,
-    setFailed: vi.fn(),
-    setOutput: vi.fn(),
-    parseInputs: vi.fn(),
     parseEventContext: vi.fn(),
     parseCommentContext: vi.fn(),
+    parseInputs: vi.fn(),
     resolveReviewMode: vi.fn(),
-    checkoutPullRequestHead: vi.fn(),
-    buildGitAuthEnv: vi.fn(),
-    restoreConfigFromBase: vi.fn(),
-    prepareAgentConfig: vi.fn(() => 'code-reviewer'),
-    installKiroCli: vi.fn(async () => '/kiro'),
-    installGithubMcpServer: vi.fn(async () => '/mcp'),
-    acpConstructor: vi.fn(),
-    prompt: vi.fn(async (_sessionId: string, _promptText: string) => ({ toolCalls: [] })),
+    reviewTarget: vi.fn(),
+    prepareWorkspace: vi.fn(),
+    prepareRuntime: vi.fn(),
+    runReview: vi.fn(),
+    reportRun: vi.fn(),
+    reportConclusion: vi.fn(),
   };
 });
-
-vi.mock('node:fs', () => ({
-  readFileSync: vi.fn(() => 'Review prompt'),
-}));
-
-vi.mock('@actions/core', () => ({
-  info: vi.fn(),
-  warning: vi.fn(),
-  setSecret: vi.fn(),
-  saveState: vi.fn(),
-  setFailed: mocks.setFailed,
-  setOutput: mocks.setOutput,
-}));
-
-vi.mock('../src/inputs.js', () => ({
-  parseInputs: mocks.parseInputs,
-}));
 
 vi.mock('../src/context.js', () => ({
   parseEventContext: mocks.parseEventContext,
   parseCommentContext: mocks.parseCommentContext,
 }));
-
+vi.mock('../src/inputs.js', () => ({ parseInputs: mocks.parseInputs }));
 vi.mock('../src/review-mode.js', () => ({
   resolveReviewMode: mocks.resolveReviewMode,
+  reviewTarget: mocks.reviewTarget,
+}));
+vi.mock('../src/restore-config.js', () => ({ prepareWorkspace: mocks.prepareWorkspace }));
+vi.mock('../src/runtime.js', () => ({
+  prepareRuntime: mocks.prepareRuntime,
+  runReview: mocks.runReview,
+}));
+vi.mock('../src/report.js', () => ({
+  reportRun: mocks.reportRun,
+  reportConclusion: mocks.reportConclusion,
 }));
 
-vi.mock('../src/git.js', () => ({
-  buildGitAuthEnv: mocks.buildGitAuthEnv,
-  checkoutPullRequestHead: mocks.checkoutPullRequestHead,
-}));
-
-vi.mock('../src/restore-config.js', () => ({
-  restoreConfigFromBase: mocks.restoreConfigFromBase,
-}));
-
-vi.mock('../src/agent-config.js', () => ({
-  prepareAgentConfig: mocks.prepareAgentConfig,
-}));
-
-vi.mock('../src/setup/kiro-cli.js', () => ({
-  installKiroCli: mocks.installKiroCli,
-}));
-
-vi.mock('../src/setup/github-mcp.js', () => ({
-  installGithubMcpServer: mocks.installGithubMcpServer,
-}));
-
-vi.mock('../src/acp-client.js', () => ({
-  AcpClient: class {
-    process = { pid: 123 };
-    constructor(binary: string) {
-      mocks.acpConstructor(binary);
-    }
-    async start(): Promise<void> {}
-    async initialize(): Promise<void> {}
-    async createSession(): Promise<string> {
-      return 'session';
-    }
-    async prompt(sessionId: string, promptText: string): Promise<{ toolCalls: string[] }> {
-      return mocks.prompt(sessionId, promptText);
-    }
-    kill(): void {}
-  },
-}));
-
-const target = {
-  owner: 'owner',
-  repo: 'repo',
-  prNumber: 7,
-  baseBranch: 'main',
-  headSha: '0123456789abcdef0123456789abcdef01234567',
-  isFork: false,
-};
-
+const target = createPullRequestTarget();
+const inputs = createActionInputs();
+const mode = { kind: 'pull_request', target } as const;
 const comment = {
-  owner: 'owner',
-  repo: 'repo',
-  prNumber: 7,
-  commentId: 1234,
-  commenterLogin: 'trusted-user',
-  userRequest: 'focus on authentication',
+  owner: 'test-owner',
+  repo: 'test-repo',
+  prNumber: 42,
+  commentId: 7,
+  commenterLogin: 'reviewer',
+  userRequest: null,
 };
-
-const baseInputs = {
-  kiroApiKey: 'kiro-key',
-  githubToken: 'github-token',
-  agent: '',
-  model: '',
-  prompt: '',
-  triggerPhrase: '@kiro',
-  maxDiffSize: 10000,
-  debug: false,
-  githubMcpVersion: '0.32.0',
-  kiroCliVersion: '2.27.1',
+const runtime = {
+  kiroBinary: '/kiro',
+  workspace: process.cwd(),
+  kiroHome: '/tmp/kiro-review/kiro-home',
+  actionPath: '.',
 };
+const successfulRun = createKiroRunResult();
 
-async function importMain(): Promise<void> {
+async function runMain(): Promise<void> {
   const { run } = await import('../src/main.js');
   await run();
 }
@@ -127,115 +68,119 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.calls.length = 0;
-  mocks.parseInputs.mockReturnValue(baseInputs);
-  mocks.parseEventContext.mockReturnValue(target);
-  mocks.parseCommentContext.mockReturnValue(null);
-  mocks.resolveReviewMode.mockResolvedValue({ kind: 'pull_request', target });
-  // Extra microtask ticks make a missing await in main.ts surface as an ordering failure.
-  mocks.checkoutPullRequestHead.mockImplementation(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    mocks.calls.push('checkout');
+  mocks.parseEventContext.mockImplementation(() => {
+    mocks.calls.push('parse-event');
+    return target;
   });
-  mocks.buildGitAuthEnv.mockReturnValue({ GIT_CONFIG_COUNT: 'sentinel-auth-env' });
-  mocks.restoreConfigFromBase.mockImplementation(async () => {
-    await Promise.resolve();
-    mocks.calls.push('restore');
+  mocks.parseInputs.mockImplementation(() => {
+    mocks.calls.push('parse-inputs');
+    return inputs;
+  });
+  mocks.parseCommentContext.mockImplementation(() => {
+    mocks.calls.push('parse-comment');
+    return comment;
+  });
+  mocks.resolveReviewMode.mockImplementation(async () => {
+    mocks.calls.push('resolve-mode');
+    return mode;
+  });
+  mocks.reviewTarget.mockImplementation(() => {
+    mocks.calls.push('review-target');
+    return target;
+  });
+  mocks.prepareWorkspace.mockImplementation(async () => {
+    mocks.calls.push('prepare-workspace');
+  });
+  mocks.prepareRuntime.mockImplementation(async () => {
+    mocks.calls.push('prepare-runtime');
+    return runtime;
+  });
+  mocks.runReview.mockImplementation(async () => {
+    mocks.calls.push('run-review');
+    return successfulRun;
+  });
+  mocks.reportRun.mockImplementation(() => {
+    mocks.calls.push('report-run');
+  });
+  mocks.reportConclusion.mockImplementation(() => {
+    mocks.calls.push('report-conclusion');
   });
 });
 
-describe('review mode preparation', () => {
-  it('installs configured versions and passes the Kiro binary to ACP', async () => {
-    await importMain();
+describe('headless review orchestration', () => {
+  it('resolves, prepares, runs, and reports in order', async () => {
+    await runMain();
 
-    expect(mocks.installKiroCli).toHaveBeenCalledWith('2.27.1');
-    expect(mocks.installGithubMcpServer).toHaveBeenCalledWith('0.32.0');
-    expect(mocks.acpConstructor).toHaveBeenCalledWith('/kiro');
+    expect(mocks.calls).toEqual([
+      'parse-event',
+      'parse-inputs',
+      'parse-comment',
+      'resolve-mode',
+      'review-target',
+      'prepare-workspace',
+      'prepare-runtime',
+      'run-review',
+      'report-run',
+    ]);
+    expect(mocks.parseCommentContext).toHaveBeenCalledWith(inputs.triggerPhrase);
+    expect(mocks.resolveReviewMode).toHaveBeenCalledWith(inputs, target, comment);
+    expect(mocks.reviewTarget).toHaveBeenCalledWith(mode, target);
+    expect(mocks.prepareWorkspace).toHaveBeenCalledWith(target, inputs.githubToken);
+    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs);
+    expect(mocks.runReview).toHaveBeenCalledWith(runtime, inputs, mode);
+    expect(mocks.reportRun).toHaveBeenCalledWith(successfulRun);
   });
 
-  it('checks out a PR head, then restores base config with auth', async () => {
-    await importMain();
-
-    expect(mocks.checkoutPullRequestHead).toHaveBeenCalledWith(target.headSha, 'github-token');
-    expect(mocks.buildGitAuthEnv).toHaveBeenCalledWith(process.env, 'github-token');
-    expect(mocks.restoreConfigFromBase).toHaveBeenCalledWith('main', {
-      GIT_CONFIG_COUNT: 'sentinel-auth-env',
-    });
-    expect(mocks.calls).toEqual(['checkout', 'restore']);
-  });
-
-  it('skips a fork PR before parsing required inputs', async () => {
+  it('skips forks before parsing required inputs', async () => {
     mocks.parseEventContext.mockReturnValue({ ...target, isFork: true });
-    mocks.parseInputs.mockImplementation(() => {
-      throw new Error('Input required and not supplied: kiro_api_key');
-    });
 
-    await importMain();
+    await runMain();
 
     expect(mocks.parseInputs).not.toHaveBeenCalled();
-    expect(mocks.resolveReviewMode).not.toHaveBeenCalled();
-    expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
-    expect(mocks.setFailed).not.toHaveBeenCalled();
-    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'skip');
-    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '0');
+    expect(mocks.reportConclusion).toHaveBeenCalledWith(
+      'skipped',
+      'Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.',
+    );
   });
 
-  it('prepares a comment target after resolving its review mode', async () => {
-    mocks.parseEventContext.mockReturnValue(null);
-    mocks.parseCommentContext.mockReturnValue(comment);
-    mocks.resolveReviewMode.mockImplementation(async () => {
-      mocks.calls.push('resolve');
-      return { kind: 'comment', target, userRequest: comment.userRequest };
-    });
-
-    await importMain();
-
-    expect(mocks.resolveReviewMode).toHaveBeenCalledWith(baseInputs, null, comment);
-    expect(mocks.calls).toEqual(['resolve', 'checkout', 'restore']);
-  });
-
-  it('reports a resolution failure without checking out the pull request', async () => {
-    mocks.resolveReviewMode.mockRejectedValue(new Error('resolution failed'));
-
-    await importMain();
-
-    expect(mocks.setFailed).toHaveBeenCalledWith('resolution failed');
-    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'fail');
-    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '1');
-    expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
-  });
-
-  it('skips when no review mode matches without checking out a pull request', async () => {
+  it('skips when no mode matches', async () => {
     mocks.parseEventContext.mockReturnValue(null);
     mocks.resolveReviewMode.mockResolvedValue(null);
 
-    await importMain();
+    await runMain();
 
-    expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
-    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'skip');
-    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '0');
+    expect(mocks.reviewTarget).not.toHaveBeenCalled();
+    expect(mocks.prepareRuntime).not.toHaveBeenCalled();
+    expect(mocks.reportConclusion).toHaveBeenCalledWith(
+      'skipped',
+      'No matching trigger — skipping.',
+    );
   });
 
-  it('sends a direct prompt without checking out a pull request', async () => {
-    const inputs = { ...baseInputs, prompt: 'Review this snippet' };
-    mocks.parseInputs.mockReturnValue(inputs);
-    mocks.resolveReviewMode.mockResolvedValue({ kind: 'prompt', prompt: inputs.prompt });
+  it('prepares the workspace with the resolved review target', async () => {
+    const resolvedTarget = createPullRequestTarget({ baseBranch: 'resolved-base' });
+    mocks.reviewTarget.mockReturnValue(resolvedTarget);
 
-    await importMain();
+    await runMain();
 
-    expect(mocks.checkoutPullRequestHead).not.toHaveBeenCalled();
-    expect(mocks.prompt).toHaveBeenCalledWith('session', 'Review this snippet');
+    expect(mocks.prepareWorkspace).toHaveBeenCalledWith(resolvedTarget, inputs.githubToken);
   });
 
-  it('reports an unexpected non-Error thrown by review setup', async () => {
-    mocks.parseEventContext.mockImplementation(() => {
-      throw 'payload failed';
-    });
+  it('does not prepare the workspace when the review has no target', async () => {
+    mocks.reviewTarget.mockReturnValue(null);
 
-    await importMain();
+    await runMain();
 
-    expect(mocks.setFailed).toHaveBeenCalledWith('Unexpected error: payload failed');
-    expect(mocks.setOutput).toHaveBeenCalledWith('review_result', 'fail');
-    expect(mocks.setOutput).toHaveBeenCalledWith('exit_code', '1');
+    expect(mocks.prepareWorkspace).not.toHaveBeenCalled();
+    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs);
+  });
+
+  it('maps unexpected errors to setup_error', async () => {
+    mocks.prepareWorkspace.mockRejectedValue(new Error('checkout failed'));
+
+    await runMain();
+
+    expect(mocks.prepareRuntime).not.toHaveBeenCalled();
+    expect(mocks.reportConclusion).toHaveBeenCalledWith('setup_error', 'checkout failed');
   });
 });

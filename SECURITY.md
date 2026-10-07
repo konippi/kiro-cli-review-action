@@ -2,38 +2,40 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it responsibly:
-
-1. **Do NOT open a public issue.**
-2. Email the maintainer or use [GitHub Security Advisories](https://github.com/konippi/kiro-cli-review-action/security/advisories/new).
-3. Include steps to reproduce and potential impact.
-
-We aim to respond within 48 hours and release a fix within 7 days for critical issues.
-
-## Security Model
-
-### Threat: Malicious PR Config Injection
-
-PR authors can modify `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, and `AmazonQ.md` to inject malicious configurations that kiro-cli reads at startup. This action restores these paths from the base branch before execution, in both PR and comment modes.
-
-**References:** CVE-2025-59536, CVE-2026-21852 (Claude Code equivalent vulnerabilities)
-
-### Threat: Prompt Injection via PR Diff
-
-PR diffs are untrusted input. The review agent's system prompt explicitly instructs the LLM to ignore instructions embedded in code. Additionally, `execute_bash` and `fs_write` tools are excluded from the agent and blocked by `preToolUse` hooks.
-
-### Threat: Fork PR Secret Exfiltration
-
-Fork PRs are automatically skipped — secrets are unavailable in `pull_request` workflows triggered from forks. The `isFork` check in the action provides an additional early return.
-
-**⚠️ `pull_request_target` is NOT supported and MUST NOT be used.** It grants fork PRs access to secrets, enabling exfiltration attacks (ref: GhostAction campaign, tj-actions/changed-files CVE-2025-30066).
-
-### Threat: Comment Trigger Abuse
-
-Comment-triggered reviews (`@kiro`) are restricted to users with write access (verified via the GitHub API). Bot comments and edits are ignored. User request text is sanitized, truncated to 2048 characters, and marked as untrusted.
-
-A trusted comment on a fork PR checks out the fork's code; only trigger reviews on fork PRs you trust.
+Do not open public issues for security vulnerabilities. Report them privately through [GitHub Security Advisories](https://github.com/konippi/kiro-cli-review-action/security/advisories/new).
 
 ## Supported Versions
 
 Only the latest release is supported with security updates.
+
+## Security Model
+
+### Trust Boundaries
+
+Workflow authors and configuration from a pull request's base branch are trusted, including custom agents and their MCP server commands. Pull request content is untrusted, including diffs, files, comment text, and fork code.
+
+### Configuration and Tool Isolation
+
+Before Kiro runs, the action restores `.kiro/`, `.amazonq/`, `AGENTS.md`, `README.md`, `AmazonQ.md`, and `CONTRIBUTING.md` from the base branch in PR and comment modes, and in prompt mode on `pull_request` events.
+
+Kiro loads only the generated agent from outside the checkout through `KIRO_AGENT_CONFIG_DIR`, never workspace agents or `mcp.json`. The generated agent has no hooks and exposes only the `read`, `grep`, and `glob` built-ins; built-in reads are approved only inside the workspace, while trusted custom-agent resources may reference files outside it, and none of the built-ins can modify the checkout. Its GitHub MCP server is limited to `pull_request_read`, `pull_request_review_write`, and `add_comment_to_pending_review`, which can submit any review event, including approvals, on pull requests the token can reach; grant only the permissions documented in the README. Keep the repository setting **Allow GitHub Actions to create and approve pull requests** disabled so `GITHUB_TOKEN` cannot approve.
+
+If the generated agent cannot be loaded, Kiro exits with `agent_not_loaded` instead of falling back to its default agent; the action accepts only Kiro CLI versions that provide this behaviour.
+
+### Credentials and Downloads
+
+From the workflow, Kiro receives only the Kiro API key and GitHub token supplied through the action inputs and the [documented environment variables](README.md#environment-variables). Every MCP server, including custom ones, inherits this environment and therefore both credentials; trusted custom MCP definitions may add explicit environment entries.
+
+Default tool versions are verified against SHA-256 digests embedded in the action. Overridden versions are verified against the release's published checksums from the same host, which detect corruption but not a compromised release host. Tools are installed via the Actions tool cache.
+
+### Workflow Hardening
+
+Do not run this action on `pull_request_target`; that event can expose base-repository secrets while processing untrusted content and is unsupported. Automatic `pull_request` runs from forks are skipped.
+
+Comment triggers require repository write access. An authorized comment on a fork pull request checks out fork code, so trigger one only after trusting the code being reviewed.
+
+Configure custom MCP server commands to invoke installed binaries directly, not pull-request-controlled scripts or executable configuration. Grant the workflow only the permissions it needs, and treat generated comments as untrusted until reviewed.
+
+### Reporting Scope
+
+Report bypasses of these boundaries or controls and unintended access to secrets, repository contents, or GitHub operations. Behavior explicitly authorized by trusted base-branch configuration or custom MCP servers, and model output quality alone, are out of scope.

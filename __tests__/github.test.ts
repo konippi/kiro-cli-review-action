@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPullRequestTarget } from './helpers/context.js';
 
 const githubMocks = vi.hoisted(() => {
   const getCollaboratorPermissionLevel = vi.fn();
@@ -136,14 +137,9 @@ describe('fetchCommentPullRequest', () => {
       },
     });
 
-    await expect(fetchCommentPullRequest('test-owner', 'test-repo', 10, 'token')).resolves.toEqual({
-      owner: 'test-owner',
-      repo: 'test-repo',
-      prNumber: 10,
-      baseBranch: 'release/v1',
-      headSha: sha,
-      isFork: true,
-    });
+    await expect(fetchCommentPullRequest('test-owner', 'test-repo', 10, 'token')).resolves.toEqual(
+      createPullRequestTarget({ prNumber: 10, baseBranch: 'release/v1', isFork: true }),
+    );
     expect(githubMocks.getOctokit).toHaveBeenCalledWith('token');
     expect(pullsGet).toHaveBeenCalledWith({
       owner: 'test-owner',

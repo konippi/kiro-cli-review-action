@@ -1,46 +1,47 @@
 import { rmSync } from 'node:fs';
 import * as core from '@actions/core';
 import { toErrorMessage } from './errors.js';
+import {
+  createTermination,
+  disposeTermination,
+  SIGTERM_GRACE_MS,
+  terminateGroup,
+  waitForEscalation,
+} from './kiro/runner.js';
+import { getKiroPid } from './state.js';
 
-const SIGTERM_GRACE_MS = 5_000;
-
-function killProcess(pid: number): void {
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch {
-    return; // Already dead
+async function terminateProcess(pid: number): Promise<void> {
+  const termination = createTermination(pid, SIGTERM_GRACE_MS);
+  if (!terminateGroup(termination)) {
+    disposeTermination(termination);
+    return;
   }
-  setTimeout(() => {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Already dead
-    }
-  }, SIGTERM_GRACE_MS);
+
+  await new Promise<void>((resolve) => waitForEscalation(termination, resolve));
+  disposeTermination(termination);
+}
+
+function removeBestEffort(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {
+    // Best effort.
+  }
 }
 
 async function cleanup(): Promise<void> {
-  // Kill ACP process
-  const acpPid = core.getState('acp_pid');
-  if (acpPid) {
-    const pid = Number.parseInt(acpPid, 10);
-    if (!Number.isNaN(pid) && pid > 0) {
-      core.info(`Terminating ACP process (PID: ${pid})`);
-      killProcess(pid);
-    }
+  const pid = getKiroPid();
+  if (pid) {
+    core.info(`Terminating Kiro process group (PID: ${pid})`);
+    await terminateProcess(pid);
   }
 
-  // Clean up backup directory
-  try {
-    rmSync('.kiro-pr', { recursive: true, force: true });
-  } catch {
-    // Best effort
-  }
+  removeBestEffort('.kiro-pr');
 
   core.info('Cleanup complete');
 }
 
-/** Runs post-action cleanup and reports unexpected cleanup errors as warnings. */
+/** Runs post-action cleanup and reports unexpected cleanup errors through warnings. */
 export async function run(): Promise<void> {
   try {
     await cleanup();

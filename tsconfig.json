@@ -3,6 +3,7 @@
     "target": "ES2024",
     "lib": [
       "ES2024",
+      "ES2025.RegExp",
       "ESNext.Array",
       "ESNext.Collection",
       "ESNext.Error",
@@ -15,6 +16,7 @@
     "noEmit": true,
     "strict": true,
     "isolatedModules": true,
+    "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,

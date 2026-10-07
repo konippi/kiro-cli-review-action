@@ -18,29 +18,12 @@ vi.mock('../src/github.js', () => ({
   fetchCommentPullRequest: githubMocks.fetchCommentPullRequest,
 }));
 
-import { resolveReviewMode } from '../src/review-mode.js';
+import { resolveReviewMode, reviewTarget } from '../src/review-mode.js';
+import { createPullRequestTarget } from './helpers/context.js';
+import { createActionInputs } from './helpers/inputs.js';
 
-const sha = '0123456789abcdef0123456789abcdef01234567';
-const inputs = {
-  kiroApiKey: 'kiro-key',
-  githubToken: 'github-token',
-  agent: '',
-  model: '',
-  prompt: '',
-  triggerPhrase: '@kiro',
-  maxDiffSize: 10000,
-  debug: false,
-  githubMcpVersion: '0.32.0',
-  kiroCliVersion: '2.27.1',
-};
-const target = {
-  owner: 'test-owner',
-  repo: 'test-repo',
-  prNumber: 42,
-  baseBranch: 'main',
-  headSha: sha,
-  isFork: false,
-};
+const inputs = createActionInputs();
+const target = createPullRequestTarget();
 const comment = {
   owner: 'test-owner',
   repo: 'test-repo',
@@ -56,12 +39,26 @@ beforeEach(() => {
 });
 
 describe('resolveReviewMode', () => {
-  it('returns prompt mode without calling GitHub APIs', async () => {
+  it('returns direct prompt mode without a GitHub token or API calls', async () => {
     await expect(
-      resolveReviewMode({ ...inputs, prompt: 'Review this snippet' }, target, comment),
+      resolveReviewMode(
+        { ...inputs, githubToken: '', prompt: 'Review this snippet' },
+        null,
+        comment,
+      ),
     ).resolves.toEqual({ kind: 'prompt', prompt: 'Review this snippet' });
 
     expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
+    expect(githubMocks.fetchCommentPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects pull request prompt mode without a GitHub token or API calls', async () => {
+    await expect(
+      resolveReviewMode({ ...inputs, githubToken: '', prompt: 'Review this PR' }, target, null),
+    ).rejects.toThrow('github_token is required for pull request reviews');
+
+    expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
+    expect(githubMocks.acknowledgeComment).not.toHaveBeenCalled();
     expect(githubMocks.fetchCommentPullRequest).not.toHaveBeenCalled();
   });
 
@@ -75,9 +72,17 @@ describe('resolveReviewMode', () => {
     expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
   });
 
+  it('rejects pull request mode without a GitHub token', async () => {
+    await expect(resolveReviewMode({ ...inputs, githubToken: '' }, target, null)).rejects.toThrow(
+      'github_token is required for pull request reviews',
+    );
+
+    expect(core.info).not.toHaveBeenCalled();
+  });
+
   it('rejects comment mode without a GitHub token', async () => {
     await expect(resolveReviewMode({ ...inputs, githubToken: '' }, null, comment)).rejects.toThrow(
-      'github_token is required for comment-triggered reviews',
+      'github_token is required for pull request reviews',
     );
 
     expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
@@ -138,5 +143,21 @@ describe('resolveReviewMode', () => {
     await expect(resolveReviewMode(inputs, null, null)).resolves.toBeNull();
 
     expect(githubMocks.authorizeCommentTrigger).not.toHaveBeenCalled();
+  });
+});
+
+describe('reviewTarget', () => {
+  const promptMode = { kind: 'prompt', prompt: 'review directly' } as const;
+  const pullRequestMode = { kind: 'pull_request', target } as const;
+  const commentTarget = createPullRequestTarget({ prNumber: 11 });
+  const commentMode = { kind: 'comment', target: commentTarget, userRequest: null } as const;
+
+  it.each([
+    ['prompt mode with an event', promptMode, target, target],
+    ['prompt mode without an event', promptMode, null, null],
+    ['pull request mode', pullRequestMode, null, target],
+    ['comment mode', commentMode, target, commentTarget],
+  ] as const)('returns the target for %s', (_name, reviewMode, event, expected) => {
+    expect(reviewTarget(reviewMode, event)).toBe(expected);
   });
 });

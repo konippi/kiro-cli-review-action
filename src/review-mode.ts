@@ -13,13 +13,29 @@ export type ReviewMode =
       readonly userRequest: string | null;
     };
 
+/** Selects the pull request target associated with a review mode. */
+export function reviewTarget(
+  mode: ReviewMode,
+  event: PullRequestTarget | null,
+): PullRequestTarget | null {
+  return mode.kind === 'prompt' ? event : mode.target;
+}
+
 /** Resolves the review mode, authorizing and acknowledging comment triggers via the GitHub API. */
 export async function resolveReviewMode(
   inputs: ActionInputs,
   event: PullRequestTarget | null,
   comment: CommentContext | null,
 ): Promise<ReviewMode | null> {
+  if (event !== null && inputs.githubToken === '') {
+    throw new Error('github_token is required for pull request reviews');
+  }
+
   if (inputs.prompt !== '') return { kind: 'prompt', prompt: inputs.prompt };
+
+  if (comment !== null && inputs.githubToken === '') {
+    throw new Error('github_token is required for pull request reviews');
+  }
 
   if (event) {
     core.info(`Reviewing PR #${event.prNumber} in ${event.owner}/${event.repo}`);
@@ -30,10 +46,6 @@ export async function resolveReviewMode(
     core.info(
       `Comment-triggered review for PR #${comment.prNumber} in ${comment.owner}/${comment.repo}`,
     );
-
-    if (!inputs.githubToken) {
-      throw new Error('github_token is required for comment-triggered reviews');
-    }
 
     await authorizeCommentTrigger(
       comment.owner,

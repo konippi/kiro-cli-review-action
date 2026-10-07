@@ -16,7 +16,7 @@ vi.mock('../../src/setup/download.js', () => ({
 
 const temporaryDirectories: string[] = [];
 const MCP_VERSION = '0.32.0';
-const OTHER_MCP_VERSION = '0.33.0';
+const MINIMUM_MCP_VERSION = '0.23.0';
 const MCP_SHA256 = 'c90fcbd681b716fdb845cc6e19f88fac1c26fec0b8084b11ef39fc410a17e304';
 let resolvedSha256: string | undefined;
 
@@ -63,6 +63,15 @@ afterEach(() => {
 });
 
 describe('installGithubMcpServer', () => {
+  it('rejects a version just below the minimum before installer work', async () => {
+    const { installGithubMcpServer } = await loadGithubMcp();
+
+    await expect(installGithubMcpServer('0.22.0')).rejects.toThrow(
+      'Input github_mcp_version is not supported: requested 0.22.0; supported versions are >=0.23.0',
+    );
+    expect(mocks.installTool).not.toHaveBeenCalled();
+  });
+
   it.each<{ readonly platform: NodeJS.Platform; readonly arch: NodeJS.Architecture }>([
     { platform: 'darwin', arch: 'x64' },
     { platform: 'linux', arch: 'ia32' },
@@ -98,16 +107,6 @@ describe('installGithubMcpServer', () => {
     expect(resolvedSha256).toBe(MCP_SHA256);
   });
 
-  it('reuses a custom-version cache hit without fetching checksums', async () => {
-    mocks.installTool.mockResolvedValue('/tool-cache/hit');
-    const { installGithubMcpServer } = await loadGithubMcp();
-
-    await expect(installGithubMcpServer(OTHER_MCP_VERSION)).resolves.toBe(
-      join('/tool-cache/hit', 'github-mcp-server'),
-    );
-    expect(mocks.fetchText).not.toHaveBeenCalled();
-  });
-
   it('uses the arm64 architecture key and asset', async () => {
     useRunner('linux', 'arm64');
     const { installGithubMcpServer } = await loadGithubMcp();
@@ -127,10 +126,10 @@ describe('installGithubMcpServer', () => {
     );
     const { installGithubMcpServer } = await loadGithubMcp();
 
-    await installGithubMcpServer(OTHER_MCP_VERSION);
+    await installGithubMcpServer(MINIMUM_MCP_VERSION);
 
     expect(mocks.fetchText).toHaveBeenCalledWith(
-      `https://github.com/github/github-mcp-server/releases/download/v${OTHER_MCP_VERSION}/github-mcp-server_${OTHER_MCP_VERSION}_checksums.txt`,
+      `https://github.com/github/github-mcp-server/releases/download/v${MINIMUM_MCP_VERSION}/github-mcp-server_${MINIMUM_MCP_VERSION}_checksums.txt`,
     );
     expect(mocks.fetchText).toHaveBeenCalledOnce();
     expect(resolvedSha256).toBe(digest);
@@ -141,10 +140,10 @@ describe('installGithubMcpServer', () => {
     mocks.fetchText.mockRejectedValue(fetchError);
     const { installGithubMcpServer } = await loadGithubMcp();
 
-    await expect(installGithubMcpServer(OTHER_MCP_VERSION)).rejects.toMatchObject({
+    await expect(installGithubMcpServer(MINIMUM_MCP_VERSION)).rejects.toMatchObject({
       message:
-        `Failed to fetch github-mcp-server_${OTHER_MCP_VERSION}_checksums.txt for ` +
-        `github-mcp-server ${OTHER_MCP_VERSION}`,
+        `Failed to fetch github-mcp-server_${MINIMUM_MCP_VERSION}_checksums.txt for ` +
+        `github-mcp-server ${MINIMUM_MCP_VERSION}`,
       cause: fetchError,
     });
     expect(mocks.installTool).toHaveBeenCalledOnce();
@@ -157,9 +156,9 @@ describe('installGithubMcpServer', () => {
     );
     const { installGithubMcpServer } = await loadGithubMcp();
 
-    await expect(installGithubMcpServer(OTHER_MCP_VERSION)).rejects.toThrow(
+    await expect(installGithubMcpServer(MINIMUM_MCP_VERSION)).rejects.toThrow(
       'No checksum for github-mcp-server_Linux_x86_64.tar.gz in ' +
-        `github-mcp-server_${OTHER_MCP_VERSION}_checksums.txt`,
+        `github-mcp-server_${MINIMUM_MCP_VERSION}_checksums.txt`,
     );
     expect(mocks.installTool).toHaveBeenCalledOnce();
     expect(mocks.fetchText).toHaveBeenCalledOnce();
