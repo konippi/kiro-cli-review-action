@@ -28265,10 +28265,11 @@ function snapshotPullRequestConfig(limits) {
   );
 }
 function ensureSnapshotExcluded() {
-  const gitDirectory = git(["rev-parse", "--git-dir"], "Failed to resolve git directory", {
-    stdio: "pipe"
-  });
-  const excludePath = (0, import_node_path4.join)(gitDirectory, "info", "exclude");
+  const excludePath = git(
+    ["rev-parse", "--git-path", "info/exclude"],
+    "Failed to resolve git exclude file",
+    { stdio: "pipe" }
+  );
   let excludeContents = "";
   try {
     excludeContents = (0, import_node_fs3.readFileSync)(excludePath, "utf8");

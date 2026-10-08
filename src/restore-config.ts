@@ -158,10 +158,11 @@ function snapshotPullRequestConfig(limits: SnapshotLimits): void {
 }
 
 function ensureSnapshotExcluded(): void {
-  const gitDirectory = git(['rev-parse', '--git-dir'], 'Failed to resolve git directory', {
-    stdio: 'pipe',
-  });
-  const excludePath = join(gitDirectory, 'info', 'exclude');
+  const excludePath = git(
+    ['rev-parse', '--git-path', 'info/exclude'],
+    'Failed to resolve git exclude file',
+    { stdio: 'pipe' },
+  );
   let excludeContents = '';
 
   try {

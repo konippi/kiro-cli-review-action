@@ -55,7 +55,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   workspaceMocks.calls.length = 0;
   mockExecFileSync.mockImplementation((_file, args) =>
-    gitCommand(args) === 'rev-parse' ? '.git\n' : Buffer.alloc(0),
+    gitCommand(args) === 'rev-parse' ? '.git/info/exclude\n' : Buffer.alloc(0),
   );
   mockLstatSync.mockImplementation(() => {
     throw Object.assign(new Error('missing'), { code: 'ENOENT' });
@@ -77,6 +77,11 @@ describe('restoreConfigFromBase', () => {
       expect(file).toBe('git');
       expect(args?.slice(0, SAFE_GIT_ARGS.length)).toEqual(SAFE_GIT_ARGS);
     }
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      'git',
+      [...SAFE_GIT_ARGS, 'rev-parse', '--git-path', 'info/exclude'],
+      { encoding: 'utf8', stdio: 'pipe' },
+    );
     expect(mockExecFileSync).toHaveBeenCalledWith(
       'git',
       [
@@ -122,7 +127,7 @@ describe('restoreConfigFromBase', () => {
 
   it('classifies cat-file failures as paths absent from the base', async () => {
     mockExecFileSync.mockImplementation((_file, args) => {
-      if (gitCommand(args) === 'rev-parse') return '.git\n';
+      if (gitCommand(args) === 'rev-parse') return '.git/info/exclude\n';
       if (gitCommand(args) === 'cat-file' || gitCommand(args) === 'reset') {
         throw new Error('git failed');
       }
@@ -148,7 +153,7 @@ describe('restoreConfigFromBase', () => {
     const restoredPath = 'README.md';
 
     mockExecFileSync.mockImplementation((_file, args) => {
-      if (gitCommand(args) === 'rev-parse') return '.git\n';
+      if (gitCommand(args) === 'rev-parse') return '.git/info/exclude\n';
       if (gitCommand(args) === 'cat-file' && !args?.includes(`origin/main:${restoredPath}`)) {
         throw new Error('path absent');
       }
@@ -169,7 +174,7 @@ describe('restoreConfigFromBase', () => {
   it('retries the base fetch twice before restoring config', async () => {
     let fetchAttempts = 0;
     mockExecFileSync.mockImplementation((_file, args) => {
-      if (gitCommand(args) === 'rev-parse') return '.git\n';
+      if (gitCommand(args) === 'rev-parse') return '.git/info/exclude\n';
       if (gitCommand(args) === 'fetch' && ++fetchAttempts < 3) {
         throw new Error('git fetch failed');
       }
