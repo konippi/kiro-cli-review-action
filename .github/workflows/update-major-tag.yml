@@ -18,19 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/publish-action@23f4c6f12633a2da8f44938b71fde9afec138fb4 # v0.4.0
         with:
-          ref: main
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Update major version tag
-        env:
-          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
-        run: |
-          MAJOR="${TAG%%.*}"
-          git tag -fa "${MAJOR}" -m "${MAJOR}"
-          git push origin "${MAJOR}" --force
+          source-tag: ${{ github.event.inputs.tag || github.event.release.tag_name }}
