@@ -175,6 +175,19 @@ describe('base configuration restoration', () => {
     expect(readFileSync(excludePath, 'utf8')).toBe('existing-pattern\n/.kiro-pr/\n');
   });
 
+  it('excludes the snapshot through the common git directory in a linked worktree', async () => {
+    const linkedWorkspace = join(testRoot, 'linked-workspace');
+    git(workspace, 'worktree', 'add', '-q', '-b', 'linked-worktree', linkedWorkspace);
+    process.chdir(linkedWorkspace);
+    writeFileSync(join(linkedWorkspace, 'README.md'), 'pull request\n');
+
+    await restoreConfigFromBase('main');
+
+    const commonExcludePath = join(workspace, '.git', 'info', 'exclude');
+    expect(readFileSync(commonExcludePath, 'utf8')).toContain('/.kiro-pr/\n');
+    expect(git(linkedWorkspace, 'status', '--porcelain')).not.toContain('.kiro-pr/');
+  });
+
   it('truncates the snapshot at the configured file-count cap', async () => {
     mkdirSync(join(workspace, '.amazonq'));
     writeFileSync(join(workspace, '.amazonq', 'a.json'), 'a');
