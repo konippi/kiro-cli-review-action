@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   installKiroCli: vi.fn(),
   installGithubMcpServer: vi.fn(),
   writeAgentConfig: vi.fn(),
+  writeKiroSettings: vi.fn(),
   buildKiroEnv: vi.fn(),
   buildPrompt: vi.fn(),
   runKiro: vi.fn(),
@@ -20,10 +21,13 @@ vi.mock('../src/setup/kiro-cli.js', () => ({
 vi.mock('../src/setup/github-mcp.js', () => ({
   installGithubMcpServer: mocks.installGithubMcpServer,
 }));
-vi.mock('../src/kiro/agent.js', () => ({
+vi.mock('../src/kiro/agent-loader.js', () => ({
   GENERATED_AGENT_NAME: 'kiro-review-action',
+}));
+vi.mock('../src/kiro/agent.js', () => ({
   writeAgentConfig: mocks.writeAgentConfig,
 }));
+vi.mock('../src/kiro/settings.js', () => ({ writeKiroSettings: mocks.writeKiroSettings }));
 vi.mock('../src/kiro/env.js', () => ({ buildKiroEnv: mocks.buildKiroEnv }));
 vi.mock('../src/kiro/runner.js', () => ({ runKiro: mocks.runKiro }));
 vi.mock('../src/prompt.js', () => ({ buildPrompt: mocks.buildPrompt }));
@@ -74,16 +78,24 @@ describe('prepareRuntime', () => {
     await preparing;
   });
 
-  it('writes the agent with the resolved MCP binary and runner paths', async () => {
-    await prepareRuntime(inputs);
+  it('writes the agent and settings with the resolved runner paths', async () => {
+    const runtime = await prepareRuntime(inputs);
 
+    const kiroHome = join('/runner/temp', 'kiro-review', 'kiro-home');
     expect(mocks.writeAgentConfig).toHaveBeenCalledWith({
       workspace: process.cwd(),
       actionPath: '/action',
-      kiroHome: join('/runner/temp', 'kiro-review', 'kiro-home'),
+      kiroHome,
       agent: inputs.agent,
       model: inputs.model,
       mcpServerBinary: '/bin/github-mcp-server',
+    });
+    expect(mocks.writeKiroSettings).toHaveBeenCalledWith(kiroHome);
+    expect(runtime).toEqual({
+      kiroBinary: '/bin/kiro',
+      workspace: process.cwd(),
+      kiroHome,
+      actionPath: '/action',
     });
   });
 
@@ -97,22 +109,14 @@ describe('prepareRuntime', () => {
     );
   });
 
-  it('returns the binaries and public runner layout', async () => {
-    await expect(prepareRuntime(inputs)).resolves.toEqual({
-      kiroBinary: '/bin/kiro',
-      workspace: process.cwd(),
-      kiroHome: join('/runner/temp', 'kiro-review', 'kiro-home'),
-      actionPath: '/action',
-    });
-  });
-
-  it('propagates installer failures without writing the agent', async () => {
+  it('propagates installer failures without writing runtime configuration', async () => {
     const failure = new Error('install failed');
     mocks.installKiroCli.mockRejectedValue(failure);
 
     await expect(prepareRuntime(inputs)).rejects.toBe(failure);
 
     expect(mocks.writeAgentConfig).not.toHaveBeenCalled();
+    expect(mocks.writeKiroSettings).not.toHaveBeenCalled();
   });
 });
 

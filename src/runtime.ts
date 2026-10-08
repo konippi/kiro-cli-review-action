@@ -1,8 +1,10 @@
 import { dirname, join } from 'node:path';
 import type { ActionInputs } from './inputs.js';
-import { GENERATED_AGENT_NAME, writeAgentConfig } from './kiro/agent.js';
+import { writeAgentConfig } from './kiro/agent.js';
+import { GENERATED_AGENT_NAME } from './kiro/agent-loader.js';
 import { buildKiroEnv } from './kiro/env.js';
 import { type KiroRunResult, runKiro } from './kiro/runner.js';
+import { writeKiroSettings } from './kiro/settings.js';
 import { buildPrompt } from './prompt.js';
 import type { ReviewMode } from './review-mode.js';
 import { installGithubMcpServer } from './setup/github-mcp.js';
@@ -39,6 +41,7 @@ export async function prepareRuntime(inputs: ActionInputs): Promise<Runtime> {
     model: inputs.model,
     mcpServerBinary: mcpBinary,
   });
+  writeKiroSettings(kiroHome);
 
   return { kiroBinary, workspace, kiroHome, actionPath };
 }
