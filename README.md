@@ -127,7 +127,15 @@ The step fails for every conclusion except `success` and `skipped`. Use `steps.<
 
 ## Customization
 
-Place `.kiro/agents/code-reviewer.json` in your repository (on the base branch) to override the default agent configuration. Custom agents contribute prompt, resources, model, and MCP servers; the tool policy is fixed by the action.
+Add `.kiro/agents/code-reviewer.json` to the base branch, or name another agent with the `agent` input. Fields you set, even `""`, `[]`, or `{}`, replace the bundled agent's values, and omitted fields are inherited. For example, `"resources": []` drops the bundled `CONTRIBUTING.md`. Relative `file://` prompts resolve against the agent file, so keep referenced files in base-restored paths such as `.kiro/`. The action always adds its review rules and workflow to the prompt and enforces the tool policy. Kiro's implicit resources (`AGENTS.md`, `README.md`, steering, skills) stay off unless `.kiro/settings/cli.json` re-enables them.
+
+```json
+{
+  "name": "security-reviewer",
+  "prompt": "file://./security-reviewer.md",
+  "resources": ["file://.kiro/review/checklist.md"]
+}
+```
 
 ## Security
 

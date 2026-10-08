@@ -1,6 +1,7 @@
 {
   "name": "code-reviewer",
   "description": "Autonomous read-only PR code reviewer",
+  "prompt": "file://./code-reviewer.md",
   "tools": ["read", "grep", "glob", "@github"],
   "allowedTools": ["@github"],
   "resources": ["file://CONTRIBUTING.md"]

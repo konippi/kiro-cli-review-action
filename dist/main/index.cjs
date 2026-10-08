@@ -28453,20 +28453,28 @@ async function resolveReviewMode(inputs, event, comment) {
 }
 
 // src/runtime.ts
-var import_node_path8 = require("node:path");
+var import_node_path11 = require("node:path");
 
 // src/kiro/agent.ts
+var import_node_path7 = require("node:path");
+
+// src/fs.ts
 var import_node_fs4 = require("node:fs");
 var import_node_path5 = require("node:path");
-var GENERATED_AGENT_NAME = "kiro-review-action";
+function writeJsonFile(path5, value) {
+  const json = JSON.stringify(value, null, 2);
+  if (json === void 0) throw new TypeError(`Cannot serialize ${path5} as JSON`);
+  (0, import_node_fs4.mkdirSync)((0, import_node_path5.dirname)(path5), { recursive: true });
+  (0, import_node_fs4.writeFileSync)(path5, `${json}
+`, { mode: 384 });
+  (0, import_node_fs4.chmodSync)(path5, 384);
+}
+
+// src/kiro/agent-loader.ts
+var import_node_fs5 = require("node:fs");
+var import_node_path6 = require("node:path");
 var AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
-var REVIEW_TOOLS = ["read", "grep", "glob"];
-var GITHUB_REVIEW_TOOLS = [
-  "pull_request_read",
-  "pull_request_review_write",
-  "add_comment_to_pending_review"
-];
-var READ_TOOL_ALIASES = ["read", "fs_read", "fsRead"];
+var GENERATED_AGENT_NAME = "kiro-review-action";
 function validateAgentName(name) {
   if (name === GENERATED_AGENT_NAME || !AGENT_NAME_PATTERN.test(name)) {
     throw new Error(
@@ -28504,6 +28512,55 @@ function parseAgentConfig(value, path5) {
   assertOptionalString(value.model, path5, "model");
   return value;
 }
+function readAgent(path5) {
+  let parsed;
+  try {
+    parsed = JSON.parse((0, import_node_fs5.readFileSync)(path5, "utf8"));
+  } catch (error2) {
+    const problem = error2 instanceof SyntaxError ? "Invalid JSON in" : "Unable to read";
+    throw new Error(`${problem} agent configuration at ${path5}`, { cause: error2 });
+  }
+  return parseAgentConfig(parsed, path5);
+}
+function resolvePrompt(prompt, sourceDirectory) {
+  if (prompt === void 0 || !prompt.startsWith("file://")) return prompt;
+  const path5 = prompt.slice("file://".length);
+  return path5.startsWith("/") ? prompt : `file://${(0, import_node_path6.resolve)(sourceDirectory, path5)}`;
+}
+function mergeAgent(bundledPath, sourcePath) {
+  const bundled = readAgent(bundledPath);
+  const custom = sourcePath === bundledPath ? {} : readAgent(sourcePath);
+  const merged = { ...bundled, ...custom };
+  const promptPath = custom.prompt === void 0 ? bundledPath : sourcePath;
+  const prompt = resolvePrompt(merged.prompt, (0, import_node_path6.dirname)(promptPath));
+  const source = prompt === void 0 ? merged : { ...merged, prompt };
+  return { source, custom };
+}
+function loadAgent(options) {
+  const agentsDirectory = (0, import_node_path6.resolve)(options.workspace, ".kiro", "agents");
+  const workspaceDefault = (0, import_node_path6.join)(agentsDirectory, "code-reviewer.json");
+  const bundledPath = (0, import_node_path6.resolve)(options.actionPath, "agents", "code-reviewer.json");
+  let sourcePath;
+  let model;
+  if (options.agent !== "") {
+    const name = validateAgentName(options.agent);
+    sourcePath = (0, import_node_path6.join)(agentsDirectory, `${name}.json`);
+    model = "";
+    if (!(0, import_node_fs5.existsSync)(sourcePath)) throw new Error(`Agent configuration not found at ${sourcePath}`);
+    if (options.model !== "") {
+      warning("model input is ignored when agent input is specified");
+    }
+  } else {
+    sourcePath = (0, import_node_fs5.existsSync)(workspaceDefault) ? workspaceDefault : bundledPath;
+    model = options.model;
+  }
+  const { source, custom } = mergeAgent(bundledPath, sourcePath);
+  return { source, custom, sourcePath, model };
+}
+
+// src/kiro/tool-policy.ts
+var REVIEW_TOOLS = ["read", "grep", "glob"];
+var READ_TOOL_ALIASES = ["read", "fs_read", "fsRead"];
 function hasWildcard(value) {
   return value.includes("*") || value.includes("?");
 }
@@ -28609,6 +28666,22 @@ function buildToolsSettings(agent) {
   }
   return settings;
 }
+function customServerNames(servers) {
+  return Object.keys(servers ?? {}).filter((server) => server !== "github");
+}
+function buildToolPolicy(source, customServers) {
+  const tools = buildTools(source, customServers);
+  const allowedTools = buildAllowedTools(source, tools);
+  const toolsSettings = buildToolsSettings(source);
+  return { tools, allowedTools, toolsSettings };
+}
+
+// src/kiro/agent.ts
+var GITHUB_REVIEW_TOOLS = [
+  "pull_request_read",
+  "pull_request_review_write",
+  "add_comment_to_pending_review"
+];
 function ignoredAgentFields(source) {
   const copiedFields = /* @__PURE__ */ new Set(["description", "prompt", "resources", "model", "mcpServers"]);
   const actionOwnedFields = /* @__PURE__ */ new Set(["name", "tools", "allowedTools", "toolsSettings"]);
@@ -28618,19 +28691,14 @@ function ignoredAgentFields(source) {
     return true;
   });
 }
-function resolvePrompt(prompt, sourceDirectory) {
-  if (prompt === void 0 || !prompt.startsWith("file://")) return prompt;
-  const path5 = prompt.slice("file://".length);
-  return path5.startsWith("/") ? prompt : `file://${(0, import_node_path5.resolve)(sourceDirectory, path5)}`;
-}
 function buildAgentConfig(source, options) {
   const copiedSource = structuredClone(source);
-  const ignoredFields = ignoredAgentFields(source);
+  const ignoredFields = ignoredAgentFields(options.ignoredFieldsSource ?? source);
   if (ignoredFields.length > 0) {
     info(`Review agent ignores agent fields: ${ignoredFields.join(", ")}`);
   }
   const currentServers = copiedSource.mcpServers ?? {};
-  const customServers = Object.keys(currentServers).filter((server) => server !== "github");
+  const customServers = customServerNames(currentServers);
   if (Object.hasOwn(currentServers, "github")) {
     warning("Replacing the agent's github MCP server with the one managed by the action");
   }
@@ -28642,19 +28710,17 @@ function buildAgentConfig(source, options) {
       env: { GITHUB_PERSONAL_ACCESS_TOKEN: `\${GITHUB_PERSONAL_ACCESS_TOKEN}` }
     }
   };
-  const tools = buildTools(copiedSource, customServers);
-  const allowedTools = buildAllowedTools(copiedSource, tools);
+  const policy = buildToolPolicy(copiedSource, customServers);
   const agent = {
     name: GENERATED_AGENT_NAME,
     mcpServers,
-    tools,
-    allowedTools,
-    toolsSettings: buildToolsSettings(copiedSource),
+    tools: policy.tools,
+    allowedTools: policy.allowedTools,
+    toolsSettings: policy.toolsSettings,
     includeMcpJson: false
   };
   if (copiedSource.description !== void 0) agent.description = copiedSource.description;
-  const prompt = resolvePrompt(copiedSource.prompt, options.sourceDirectory);
-  if (prompt !== void 0) agent.prompt = prompt;
+  if (copiedSource.prompt !== void 0) agent.prompt = copiedSource.prompt;
   if (copiedSource.resources !== void 0) agent.resources = copiedSource.resources;
   if (options.model !== "") {
     agent.model = options.model;
@@ -28663,47 +28729,24 @@ function buildAgentConfig(source, options) {
   }
   return agent;
 }
-function readAgent(path5) {
-  let parsed;
-  try {
-    parsed = JSON.parse((0, import_node_fs4.readFileSync)(path5, "utf8"));
-  } catch (error2) {
-    const problem = error2 instanceof SyntaxError ? "Invalid JSON in" : "Unable to read";
-    throw new Error(`${problem} agent configuration at ${path5}`, { cause: error2 });
-  }
-  return parseAgentConfig(parsed, path5);
-}
 function writeAgentConfig(options) {
-  const agentsDirectory = (0, import_node_path5.join)(options.workspace, ".kiro", "agents");
-  const workspaceDefault = (0, import_node_path5.join)(agentsDirectory, "code-reviewer.json");
-  let sourcePath;
-  let model;
-  if (options.agent !== "") {
-    const name = validateAgentName(options.agent);
-    sourcePath = (0, import_node_path5.join)(agentsDirectory, `${name}.json`);
-    model = "";
-    if (!(0, import_node_fs4.existsSync)(sourcePath)) throw new Error(`Agent configuration not found at ${sourcePath}`);
-    if (options.model !== "") {
-      warning("model input is ignored when agent input is specified");
-    }
-  } else {
-    sourcePath = (0, import_node_fs4.existsSync)(workspaceDefault) ? workspaceDefault : (0, import_node_path5.join)(options.actionPath, "agents", "code-reviewer.json");
-    model = options.model;
-  }
-  const config = buildAgentConfig(readAgent(sourcePath), {
+  const { source, custom, sourcePath, model } = loadAgent(options);
+  const policy = Object.hasOwn(custom, "prompt") ? "custom" : "default";
+  const customServers = customServerNames(source.mcpServers);
+  const config = buildAgentConfig(source, {
     mcpServerBinary: options.mcpServerBinary,
     model,
-    sourceDirectory: (0, import_node_path5.dirname)(sourcePath)
+    ignoredFieldsSource: custom
   });
-  const destination = (0, import_node_path5.join)(options.kiroHome, "agents", `${GENERATED_AGENT_NAME}.json`);
-  (0, import_node_fs4.mkdirSync)((0, import_node_path5.dirname)(destination), { recursive: true });
-  (0, import_node_fs4.writeFileSync)(destination, `${JSON.stringify(config, null, 2)}
-`, { mode: 384 });
-  (0, import_node_fs4.chmodSync)(destination, 384);
+  const destination = (0, import_node_path7.join)(options.kiroHome, "agents", `${GENERATED_AGENT_NAME}.json`);
+  info(
+    `Effective review agent: source=${sourcePath}; policy=${policy}; resources=${source.resources?.length ?? 0}; customMcpServers=${customServers.length}`
+  );
+  writeJsonFile(destination, config);
 }
 
 // src/kiro/env.ts
-var import_node_path6 = require("node:path");
+var import_node_path8 = require("node:path");
 var ALLOWED_ENV_KEYS = [
   "PATH",
   "HOME",
@@ -28726,7 +28769,7 @@ function buildKiroEnv(parentEnv, options) {
     const value = parentEnv[key];
     if (value !== void 0) env[key] = value;
   }
-  env.PATH = parentEnv.PATH ? `${options.kiroBinDir}${import_node_path6.delimiter}${parentEnv.PATH}` : options.kiroBinDir;
+  env.PATH = parentEnv.PATH ? `${options.kiroBinDir}${import_node_path8.delimiter}${parentEnv.PATH}` : options.kiroBinDir;
   env.CI = "true";
   env.GITHUB_ACTIONS = "true";
   env.TERM = "dumb";
@@ -28737,7 +28780,7 @@ function buildKiroEnv(parentEnv, options) {
   env.KIRO_API_KEY = options.kiroApiKey;
   if (options.githubToken !== "") env.GITHUB_PERSONAL_ACCESS_TOKEN = options.githubToken;
   env.KIRO_HOME = options.kiroHome;
-  env.KIRO_AGENT_CONFIG_DIR = (0, import_node_path6.join)(options.kiroHome, "agents");
+  env.KIRO_AGENT_CONFIG_DIR = (0, import_node_path8.join)(options.kiroHome, "agents");
   return env;
 }
 
@@ -29025,11 +29068,19 @@ function runKiro(options) {
   });
 }
 
+// src/kiro/settings.ts
+var import_node_path9 = require("node:path");
+function writeKiroSettings(kiroHome) {
+  writeJsonFile((0, import_node_path9.join)(kiroHome, "settings", "cli.json"), {
+    "chat.disableInheritingDefaultResources": true
+  });
+}
+
 // src/prompt.ts
-var import_node_fs5 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_node_path10 = require("node:path");
 function buildReviewPrompt(pullRequest, actionPath, maxDiffSize) {
-  const instructions = (0, import_node_fs5.readFileSync)((0, import_node_path7.join)(actionPath, "prompts", "review.md"), "utf8");
+  const instructions = (0, import_node_fs6.readFileSync)((0, import_node_path10.join)(actionPath, "prompts", "review.md"), "utf8");
   return [
     instructions,
     "",
@@ -29070,7 +29121,7 @@ async function prepareRuntime(inputs) {
   const workspace = process.cwd();
   const runnerTemp = process.env.RUNNER_TEMP;
   if (!runnerTemp) throw new Error("RUNNER_TEMP is not defined");
-  const kiroHome = (0, import_node_path8.join)(runnerTemp, "kiro-review", "kiro-home");
+  const kiroHome = (0, import_node_path11.join)(runnerTemp, "kiro-review", "kiro-home");
   const actionPath = process.env.GITHUB_ACTION_PATH || ".";
   const [kiroBinary, mcpBinary] = await Promise.all([
     installKiroCli(inputs.kiroCliVersion),
@@ -29084,6 +29135,7 @@ async function prepareRuntime(inputs) {
     model: inputs.model,
     mcpServerBinary: mcpBinary
   });
+  writeKiroSettings(kiroHome);
   return { kiroBinary, workspace, kiroHome, actionPath };
 }
 async function runReview(runtime, inputs, mode) {
@@ -29097,7 +29149,7 @@ async function runReview(runtime, inputs, mode) {
         kiroApiKey: inputs.kiroApiKey,
         githubToken: inputs.githubToken,
         kiroHome: runtime.kiroHome,
-        kiroBinDir: (0, import_node_path8.dirname)(runtime.kiroBinary)
+        kiroBinDir: (0, import_node_path11.dirname)(runtime.kiroBinary)
       }),
       timeoutMs: inputs.timeoutMinutes * 6e4,
       debug: inputs.debug,
