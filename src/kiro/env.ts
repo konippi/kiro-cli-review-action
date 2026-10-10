@@ -25,10 +25,10 @@ interface KiroEnvironmentOptions {
   readonly kiroBinDir: string;
 }
 
-/** Builds the allowlisted environment that Kiro passes on to every MCP server it spawns. */
-export function buildKiroEnv(
+/** Builds the allowlisted parent environment for a Kiro process. */
+export function buildKiroProcessEnv(
   parentEnv: NodeJS.ProcessEnv,
-  options: KiroEnvironmentOptions,
+  kiroBinDir: string,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
 
@@ -38,9 +38,17 @@ export function buildKiroEnv(
   }
 
   // The Kiro launcher resolves its sibling kiro-cli-chat through PATH.
-  env.PATH = parentEnv.PATH
-    ? `${options.kiroBinDir}${delimiter}${parentEnv.PATH}`
-    : options.kiroBinDir;
+  env.PATH = parentEnv.PATH ? `${kiroBinDir}${delimiter}${parentEnv.PATH}` : kiroBinDir;
+
+  return env;
+}
+
+/** Builds the allowlisted environment that Kiro passes on to every MCP server it spawns. */
+export function buildKiroEnv(
+  parentEnv: NodeJS.ProcessEnv,
+  options: KiroEnvironmentOptions,
+): NodeJS.ProcessEnv {
+  const env = buildKiroProcessEnv(parentEnv, options.kiroBinDir);
 
   env.CI = 'true';
   env.GITHUB_ACTIONS = 'true';
