@@ -27805,12 +27805,55 @@ async function installGithubMcpServer(version) {
 
 // src/setup/kiro-cli.ts
 var import_node_child_process = require("node:child_process");
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 var semver4 = __toESM(require_semver2(), 1);
 
 // src/guards.ts
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/kiro/env.ts
+var import_node_path3 = require("node:path");
+var ALLOWED_ENV_KEYS = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "KIRO_DISABLE_TELEMETRY"
+];
+function buildKiroProcessEnv(parentEnv, kiroBinDir) {
+  const env = {};
+  for (const key of ALLOWED_ENV_KEYS) {
+    const value = parentEnv[key];
+    if (value !== void 0) env[key] = value;
+  }
+  env.PATH = parentEnv.PATH ? `${kiroBinDir}${import_node_path3.delimiter}${parentEnv.PATH}` : kiroBinDir;
+  return env;
+}
+function buildKiroEnv(parentEnv, options) {
+  const env = buildKiroProcessEnv(parentEnv, options.kiroBinDir);
+  env.CI = "true";
+  env.GITHUB_ACTIONS = "true";
+  env.TERM = "dumb";
+  if (typeof parentEnv.GITHUB_SERVER_URL === "string") {
+    const githubHost = new URL(parentEnv.GITHUB_SERVER_URL).origin;
+    if (githubHost !== "https://github.com") env.GITHUB_HOST = githubHost;
+  }
+  env.KIRO_API_KEY = options.kiroApiKey;
+  if (options.githubToken !== "") env.GITHUB_PERSONAL_ACCESS_TOKEN = options.githubToken;
+  env.KIRO_HOME = options.kiroHome;
+  env.KIRO_AGENT_CONFIG_DIR = (0, import_node_path3.join)(options.kiroHome, "agents");
+  return env;
 }
 
 // src/setup/kiro-cli.ts
@@ -27873,7 +27916,8 @@ function runKiroCliVersion(launcher) {
     return (0, import_node_child_process.execFileSync)(launcher, ["--version"], {
       encoding: "utf8",
       timeout: 1e4,
-      killSignal: "SIGKILL"
+      killSignal: "SIGKILL",
+      env: buildKiroProcessEnv(process.env, (0, import_node_path4.dirname)(launcher))
     });
   } catch (error2) {
     throw new Error(`kiro-cli version verification failed: could not run ${launcher} --version`, {
@@ -27941,10 +27985,10 @@ async function installKiroCli(version) {
     asset: artifact.filename,
     url,
     resolveSha256: () => resolveKiroArtifactSha256(version, artifact.filename),
-    archiveDirectory: (0, import_node_path3.join)("kirocli", "bin"),
-    verify: (directory) => assertKiroCliVersion((0, import_node_path3.join)(directory, "kiro-cli"), version)
+    archiveDirectory: (0, import_node_path4.join)("kirocli", "bin"),
+    verify: (directory) => assertKiroCliVersion((0, import_node_path4.join)(directory, "kiro-cli"), version)
   });
-  return (0, import_node_path3.join)(cacheDirectory, "kiro-cli");
+  return (0, import_node_path4.join)(cacheDirectory, "kiro-cli");
 }
 
 // src/inputs.ts
@@ -28074,7 +28118,7 @@ function reportRun(result) {
 
 // src/restore-config.ts
 var import_node_fs3 = require("node:fs");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // src/git.ts
 var import_node_child_process2 = require("node:child_process");
@@ -28179,7 +28223,7 @@ function truncateSnapshot(reason, state) {
   if (state.truncated) return;
   const message = `Snapshot truncated: ${reason}.`;
   (0, import_node_fs3.mkdirSync)(SNAPSHOT_DIRECTORY, { recursive: true });
-  (0, import_node_fs3.writeFileSync)((0, import_node_path4.join)(SNAPSHOT_DIRECTORY, "SNAPSHOT_TRUNCATED.txt"), `${message}
+  (0, import_node_fs3.writeFileSync)((0, import_node_path5.join)(SNAPSHOT_DIRECTORY, "SNAPSHOT_TRUNCATED.txt"), `${message}
 `);
   state.placeholders += 1;
   state.truncated = true;
@@ -28200,7 +28244,7 @@ function snapshotConfigPath(source, destination, state, limits) {
       return;
     }
     const linkTarget = (0, import_node_fs3.readlinkSync)(source);
-    (0, import_node_fs3.mkdirSync)((0, import_node_path4.dirname)(destination), { recursive: true });
+    (0, import_node_fs3.mkdirSync)((0, import_node_path5.dirname)(destination), { recursive: true });
     (0, import_node_fs3.writeFileSync)(destination, `Symbolic link not copied: ${source} -> ${linkTarget}
 `);
     state.totalFiles += 1;
@@ -28214,8 +28258,8 @@ function snapshotConfigPath(source, destination, state, limits) {
     (0, import_node_fs3.mkdirSync)(destination, { recursive: true });
     for (const directoryEntry of (0, import_node_fs3.readdirSync)(source)) {
       snapshotConfigPath(
-        (0, import_node_path4.join)(source, directoryEntry),
-        (0, import_node_path4.join)(destination, directoryEntry),
+        (0, import_node_path5.join)(source, directoryEntry),
+        (0, import_node_path5.join)(destination, directoryEntry),
         state,
         limits
       );
@@ -28232,7 +28276,7 @@ function snapshotConfigPath(source, destination, state, limits) {
     truncateSnapshot(`maximum byte count (${limits.maxBytes}) would be exceeded`, state);
     return;
   }
-  (0, import_node_fs3.mkdirSync)((0, import_node_path4.dirname)(destination), { recursive: true });
+  (0, import_node_fs3.mkdirSync)((0, import_node_path5.dirname)(destination), { recursive: true });
   (0, import_node_fs3.copyFileSync)(source, destination);
   state.copiedFiles += 1;
   state.totalFiles += 1;
@@ -28254,7 +28298,7 @@ function snapshotPullRequestConfig(limits) {
   for (const sensitivePath of SENSITIVE_PATHS) {
     snapshotConfigPath(
       sensitivePath,
-      (0, import_node_path4.join)(SNAPSHOT_DIRECTORY, sensitivePath),
+      (0, import_node_path5.join)(SNAPSHOT_DIRECTORY, sensitivePath),
       state,
       resolvedLimits
     );
@@ -28278,7 +28322,7 @@ function ensureSnapshotExcluded() {
   }
   const lines = excludeContents.split(/\r?\n/);
   const exclusionCount = lines.filter((line) => line === SNAPSHOT_EXCLUSION).length;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path4.dirname)(excludePath), { recursive: true });
+  (0, import_node_fs3.mkdirSync)((0, import_node_path5.dirname)(excludePath), { recursive: true });
   if (exclusionCount === 0) {
     const separator = excludeContents.length > 0 && !excludeContents.endsWith("\n") ? "\n" : "";
     (0, import_node_fs3.writeFileSync)(excludePath, `${excludeContents}${separator}${SNAPSHOT_EXCLUSION}
@@ -28457,15 +28501,15 @@ async function resolveReviewMode(inputs, event, comment) {
 var import_node_path11 = require("node:path");
 
 // src/kiro/agent.ts
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // src/fs.ts
 var import_node_fs4 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 function writeJsonFile(path5, value) {
   const json = JSON.stringify(value, null, 2);
   if (json === void 0) throw new TypeError(`Cannot serialize ${path5} as JSON`);
-  (0, import_node_fs4.mkdirSync)((0, import_node_path5.dirname)(path5), { recursive: true });
+  (0, import_node_fs4.mkdirSync)((0, import_node_path6.dirname)(path5), { recursive: true });
   (0, import_node_fs4.writeFileSync)(path5, `${json}
 `, { mode: 384 });
   (0, import_node_fs4.chmodSync)(path5, 384);
@@ -28473,7 +28517,7 @@ function writeJsonFile(path5, value) {
 
 // src/kiro/agent-loader.ts
 var import_node_fs5 = require("node:fs");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 var GENERATED_AGENT_NAME = "kiro-review-action";
 function validateAgentName(name) {
@@ -28526,26 +28570,26 @@ function readAgent(path5) {
 function resolvePrompt(prompt, sourceDirectory) {
   if (prompt === void 0 || !prompt.startsWith("file://")) return prompt;
   const path5 = prompt.slice("file://".length);
-  return path5.startsWith("/") ? prompt : `file://${(0, import_node_path6.resolve)(sourceDirectory, path5)}`;
+  return path5.startsWith("/") ? prompt : `file://${(0, import_node_path7.resolve)(sourceDirectory, path5)}`;
 }
 function mergeAgent(bundledPath, sourcePath) {
   const bundled = readAgent(bundledPath);
   const custom = sourcePath === bundledPath ? {} : readAgent(sourcePath);
   const merged = { ...bundled, ...custom };
   const promptPath = custom.prompt === void 0 ? bundledPath : sourcePath;
-  const prompt = resolvePrompt(merged.prompt, (0, import_node_path6.dirname)(promptPath));
+  const prompt = resolvePrompt(merged.prompt, (0, import_node_path7.dirname)(promptPath));
   const source = prompt === void 0 ? merged : { ...merged, prompt };
   return { source, custom };
 }
 function loadAgent(options) {
-  const agentsDirectory = (0, import_node_path6.resolve)(options.workspace, ".kiro", "agents");
-  const workspaceDefault = (0, import_node_path6.join)(agentsDirectory, "code-reviewer.json");
-  const bundledPath = (0, import_node_path6.resolve)(options.actionPath, "agents", "code-reviewer.json");
+  const agentsDirectory = (0, import_node_path7.resolve)(options.workspace, ".kiro", "agents");
+  const workspaceDefault = (0, import_node_path7.join)(agentsDirectory, "code-reviewer.json");
+  const bundledPath = (0, import_node_path7.resolve)(options.actionPath, "agents", "code-reviewer.json");
   let sourcePath;
   let model;
   if (options.agent !== "") {
     const name = validateAgentName(options.agent);
-    sourcePath = (0, import_node_path6.join)(agentsDirectory, `${name}.json`);
+    sourcePath = (0, import_node_path7.join)(agentsDirectory, `${name}.json`);
     model = "";
     if (!(0, import_node_fs5.existsSync)(sourcePath)) throw new Error(`Agent configuration not found at ${sourcePath}`);
     if (options.model !== "") {
@@ -28739,50 +28783,11 @@ function writeAgentConfig(options) {
     model,
     ignoredFieldsSource: custom
   });
-  const destination = (0, import_node_path7.join)(options.kiroHome, "agents", `${GENERATED_AGENT_NAME}.json`);
+  const destination = (0, import_node_path8.join)(options.kiroHome, "agents", `${GENERATED_AGENT_NAME}.json`);
   info(
     `Effective review agent: source=${sourcePath}; policy=${policy}; resources=${source.resources?.length ?? 0}; customMcpServers=${customServers.length}`
   );
   writeJsonFile(destination, config);
-}
-
-// src/kiro/env.ts
-var import_node_path8 = require("node:path");
-var ALLOWED_ENV_KEYS = [
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NO_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "no_proxy",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "KIRO_DISABLE_TELEMETRY"
-];
-function buildKiroEnv(parentEnv, options) {
-  const env = {};
-  for (const key of ALLOWED_ENV_KEYS) {
-    const value = parentEnv[key];
-    if (value !== void 0) env[key] = value;
-  }
-  env.PATH = parentEnv.PATH ? `${options.kiroBinDir}${import_node_path8.delimiter}${parentEnv.PATH}` : options.kiroBinDir;
-  env.CI = "true";
-  env.GITHUB_ACTIONS = "true";
-  env.TERM = "dumb";
-  if (typeof parentEnv.GITHUB_SERVER_URL === "string") {
-    const githubHost = new URL(parentEnv.GITHUB_SERVER_URL).origin;
-    if (githubHost !== "https://github.com") env.GITHUB_HOST = githubHost;
-  }
-  env.KIRO_API_KEY = options.kiroApiKey;
-  if (options.githubToken !== "") env.GITHUB_PERSONAL_ACCESS_TOKEN = options.githubToken;
-  env.KIRO_HOME = options.kiroHome;
-  env.KIRO_AGENT_CONFIG_DIR = (0, import_node_path8.join)(options.kiroHome, "agents");
-  return env;
 }
 
 // src/kiro/runner.ts

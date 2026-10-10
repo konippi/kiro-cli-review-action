@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import * as core from '@actions/core';
 import * as semver from 'semver';
 import { isPlainObject } from '../guards.js';
+import { buildKiroProcessEnv } from '../kiro/env.js';
 import { fetchText, installTool } from './download.js';
 
 /** Kiro CLI version installed unless kiro_cli_version overrides it. */
@@ -121,6 +122,7 @@ function runKiroCliVersion(launcher: string): string {
       encoding: 'utf8',
       timeout: 10_000,
       killSignal: 'SIGKILL',
+      env: buildKiroProcessEnv(process.env, dirname(launcher)),
     });
   } catch (error: unknown) {
     throw new Error(`kiro-cli version verification failed: could not run ${launcher} --version`, {

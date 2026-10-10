@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import * as core from '@actions/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ALLOWED_ENV_KEYS } from '../../src/kiro/env.js';
 import type { ToolInstallSpec } from '../../src/setup/download.js';
 
 const mocks = vi.hoisted(() => ({
@@ -71,6 +71,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -236,13 +237,26 @@ describe('installKiroCli', () => {
 
       return source;
     });
+    vi.stubEnv('PATH', '/parent/bin');
+    for (const key of [
+      'INPUT_GITHUB_TOKEN',
+      'INPUT_KIRO_API_KEY',
+      'ACTIONS_RUNTIME_TOKEN',
+      'GITHUB_TOKEN',
+      'KIRO_API_KEY',
+    ]) {
+      vi.stubEnv(key, 'sentinel-secret');
+    }
     const { installKiroCli } = await loadKiroCli();
 
     await expect(installKiroCli(KIRO_VERSION)).resolves.toBe(binary);
-    expect(execFileSync).toHaveBeenCalledWith(binary, ['--version'], {
+    expect(mocks.execFileSync).toHaveBeenCalledWith(binary, ['--version'], {
       encoding: 'utf8',
       timeout: 10_000,
       killSignal: 'SIGKILL',
+      env: expect.objectContaining({ PATH: `${source}${delimiter}/parent/bin` }),
     });
+    const [, , options] = mocks.execFileSync.mock.calls[0] ?? [];
+    expect(ALLOWED_ENV_KEYS).toEqual(expect.arrayContaining(Object.keys(options?.env ?? {})));
   });
 });
