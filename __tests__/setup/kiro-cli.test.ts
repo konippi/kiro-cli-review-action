@@ -237,7 +237,9 @@ describe('installKiroCli', () => {
 
       return source;
     });
+    for (const key of ALLOWED_ENV_KEYS) vi.stubEnv(key, undefined);
     vi.stubEnv('PATH', '/parent/bin');
+    vi.stubEnv('HOME', '/home/runner');
     for (const key of [
       'INPUT_GITHUB_TOKEN',
       'INPUT_KIRO_API_KEY',
@@ -254,9 +256,7 @@ describe('installKiroCli', () => {
       encoding: 'utf8',
       timeout: 10_000,
       killSignal: 'SIGKILL',
-      env: expect.objectContaining({ PATH: `${source}${delimiter}/parent/bin` }),
+      env: { PATH: `${source}${delimiter}/parent/bin`, HOME: '/home/runner' },
     });
-    const [, , options] = mocks.execFileSync.mock.calls[0] ?? [];
-    expect(ALLOWED_ENV_KEYS).toEqual(expect.arrayContaining(Object.keys(options?.env ?? {})));
   });
 });
