@@ -11,10 +11,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const repository = process.cwd();
 const bundle = join(repository, 'dist', 'main', 'index.cjs');
+const mcpBundle = join(repository, 'dist', 'mcp', 'index.cjs');
 const fixture = join(repository, '__tests__', 'fixtures', 'fake-kiro-cli.ts');
 const temporaryDirectories: string[] = [];
 
@@ -107,6 +110,7 @@ function execute(scenario: string): {
 describe('built action bundle', () => {
   beforeAll(() => {
     if (!existsSync(bundle)) throw new Error(`Built action bundle is missing: ${bundle}`);
+    if (!existsSync(mcpBundle)) throw new Error(`Built MCP bundle is missing: ${mcpBundle}`);
   });
 
   it('writes successful outputs', () => {
@@ -123,5 +127,30 @@ describe('built action bundle', () => {
 
     expect(result.status).toBe(1);
     expect(result.output).toMatch(/conclusion<<[^\n]+\nmcp_startup_failure\n/);
+  });
+
+  it('starts the review bundle over stdio and lists its tools', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'kiro-mcp-bundle-'));
+    temporaryDirectories.push(directory);
+    writeFileSync(join(directory, 'context.json'), '{}');
+    writeFileSync(join(directory, 'patches.json'), '{"files":[]}');
+
+    const client = new Client({ name: 'bundle-test', version: '1.0.0' });
+    try {
+      await client.connect(
+        new StdioClientTransport({
+          command: process.execPath,
+          args: [mcpBundle, '--directory', directory],
+        }),
+      );
+      expect((await client.listTools()).tools.map(({ name }) => name)).toEqual([
+        'get_review_context',
+        'get_review_diff',
+        'add_review_finding',
+        'submit_review',
+      ]);
+    } finally {
+      await client.close();
+    }
   });
 });

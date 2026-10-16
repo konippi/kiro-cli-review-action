@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { writeJsonFile } from '../src/fs.js';
+import { readJsonFile, readJsonText, writeJsonFile } from '../src/fs.js';
 
 let temporaryDirectory = '';
 
@@ -33,6 +33,15 @@ describe('writeJsonFile', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
+  it('round-trips action-written JSON', () => {
+    temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
+    const path = join(temporaryDirectory, 'value.json');
+
+    writeJsonFile(path, { enabled: true });
+
+    expect(readJsonFile<{ readonly enabled: boolean }>(path)).toEqual({ enabled: true });
+  });
+
   it('rejects undefined without creating a file', () => {
     temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
     const path = join(temporaryDirectory, 'nested', 'value.json');
@@ -41,5 +50,24 @@ describe('writeJsonFile', () => {
       new TypeError(`Cannot serialize ${path} as JSON`),
     );
     expect(existsSync(path)).toBe(false);
+  });
+});
+
+describe('readJsonText', () => {
+  it('returns valid JSON text verbatim', () => {
+    temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
+    const path = join(temporaryDirectory, 'value.json');
+    const text = '{\n  "enabled": true\n}\n\n';
+    writeFileSync(path, text);
+
+    expect(readJsonText(path)).toBe(text);
+  });
+
+  it('rejects invalid JSON with its path', () => {
+    temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
+    const path = join(temporaryDirectory, 'value.json');
+    writeFileSync(path, '{bad');
+
+    expect(() => readJsonText(path)).toThrow(`Invalid JSON in ${path}`);
   });
 });
