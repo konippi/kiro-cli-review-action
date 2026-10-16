@@ -12,6 +12,7 @@
     ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
     "types": ["node"],
     "noEmit": true,
     "strict": true,
