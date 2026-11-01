@@ -6,7 +6,7 @@ import { prepareWorkspace } from './restore-config.js';
 import { resolveReviewMode, reviewTarget } from './review-mode.js';
 import { prepareRuntime, runReview } from './runtime.js';
 
-async function review(): Promise<void> {
+async function review(actionPath: string): Promise<void> {
   const event = parseEventContext();
   if (event?.isFork) {
     reportConclusion('skipped', 'Fork PR detected — KIRO_API_KEY is unavailable. Skipping review.');
@@ -23,14 +23,14 @@ async function review(): Promise<void> {
   const target = reviewTarget(mode, event);
   if (target !== null) await prepareWorkspace(target, inputs.githubToken);
 
-  const runtime = await prepareRuntime(inputs);
+  const runtime = await prepareRuntime(inputs, actionPath);
   reportRun(await runReview(runtime, inputs, mode));
 }
 
 /** Runs the review action and reports unexpected failures. */
-export async function run(): Promise<void> {
+export async function run(actionPath: string): Promise<void> {
   try {
-    await review();
+    await review(actionPath);
   } catch (error: unknown) {
     reportConclusion('setup_error', toErrorMessage(error));
   }

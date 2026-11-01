@@ -39,6 +39,7 @@ vi.mock('../src/state.js', () => ({
 import { prepareRuntime, runReview } from '../src/runtime.js';
 import { createKiroRunResult } from './helpers/run-result.js';
 
+const actionPath = '/action';
 const inputs = createActionInputs({
   agent: 'reviewer',
   model: 'model-id',
@@ -47,7 +48,6 @@ const inputs = createActionInputs({
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.RUNNER_TEMP = '/runner/temp';
-  process.env.GITHUB_ACTION_PATH = '/action';
   mocks.installKiroCli.mockResolvedValue('/bin/kiro');
   mocks.installGithubMcpServer.mockResolvedValue('/bin/github-mcp-server');
 });
@@ -56,7 +56,7 @@ describe('prepareRuntime', () => {
   it('rejects a missing RUNNER_TEMP before starting either installer', async () => {
     delete process.env.RUNNER_TEMP;
 
-    await expect(prepareRuntime(inputs)).rejects.toThrow('RUNNER_TEMP is not defined');
+    await expect(prepareRuntime(inputs, actionPath)).rejects.toThrow('RUNNER_TEMP is not defined');
 
     expect(mocks.installKiroCli).not.toHaveBeenCalled();
     expect(mocks.installGithubMcpServer).not.toHaveBeenCalled();
@@ -68,7 +68,7 @@ describe('prepareRuntime', () => {
     mocks.installKiroCli.mockReturnValue(kiro.promise);
     mocks.installGithubMcpServer.mockReturnValue(mcp.promise);
 
-    const preparing = prepareRuntime(inputs);
+    const preparing = prepareRuntime(inputs, actionPath);
 
     expect(mocks.installKiroCli).toHaveBeenCalledWith(inputs.kiroCliVersion);
     expect(mocks.installGithubMcpServer).toHaveBeenCalledWith(inputs.githubMcpVersion);
@@ -79,12 +79,12 @@ describe('prepareRuntime', () => {
   });
 
   it('writes the agent and settings with the resolved runner paths', async () => {
-    const runtime = await prepareRuntime(inputs);
+    const runtime = await prepareRuntime(inputs, actionPath);
 
     const kiroHome = join('/runner/temp', 'kiro-review', 'kiro-home');
     expect(mocks.writeAgentConfig).toHaveBeenCalledWith({
       workspace: process.cwd(),
-      actionPath: '/action',
+      actionPath,
       kiroHome,
       agent: inputs.agent,
       model: inputs.model,
@@ -95,25 +95,15 @@ describe('prepareRuntime', () => {
       kiroBinary: '/bin/kiro',
       workspace: process.cwd(),
       kiroHome,
-      actionPath: '/action',
+      actionPath,
     });
-  });
-
-  it("uses '.' when GITHUB_ACTION_PATH is absent", async () => {
-    delete process.env.GITHUB_ACTION_PATH;
-
-    await prepareRuntime(inputs);
-
-    expect(mocks.writeAgentConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ actionPath: '.' }),
-    );
   });
 
   it('propagates installer failures without writing runtime configuration', async () => {
     const failure = new Error('install failed');
     mocks.installKiroCli.mockRejectedValue(failure);
 
-    await expect(prepareRuntime(inputs)).rejects.toBe(failure);
+    await expect(prepareRuntime(inputs, actionPath)).rejects.toBe(failure);
 
     expect(mocks.writeAgentConfig).not.toHaveBeenCalled();
     expect(mocks.writeKiroSettings).not.toHaveBeenCalled();
@@ -126,7 +116,7 @@ describe('runReview', () => {
     kiroBinary: '/bin/kiro',
     workspace: '/workspace',
     kiroHome: '/kiro-home',
-    actionPath: '/action',
+    actionPath,
   };
 
   beforeEach(() => {
