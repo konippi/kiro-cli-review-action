@@ -20,13 +20,12 @@ export interface Runtime {
 }
 
 /** Resolves the runner layout, installs Kiro and the MCP server, and writes the review agent. */
-export async function prepareRuntime(inputs: ActionInputs): Promise<Runtime> {
+export async function prepareRuntime(inputs: ActionInputs, actionPath: string): Promise<Runtime> {
   const workspace = process.cwd();
   const runnerTemp = process.env.RUNNER_TEMP;
   if (!runnerTemp) throw new Error('RUNNER_TEMP is not defined');
 
   const kiroHome = join(runnerTemp, 'kiro-review', 'kiro-home');
-  const actionPath = process.env.GITHUB_ACTION_PATH || '.';
 
   const [kiroBinary, mcpBinary] = await Promise.all([
     installKiroCli(inputs.kiroCliVersion),

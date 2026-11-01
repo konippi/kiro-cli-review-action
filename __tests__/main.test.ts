@@ -51,17 +51,18 @@ const comment = {
   commenterLogin: 'reviewer',
   userRequest: null,
 };
+const actionPath = '/action';
 const runtime = {
   kiroBinary: '/kiro',
   workspace: process.cwd(),
   kiroHome: '/tmp/kiro-review/kiro-home',
-  actionPath: '.',
+  actionPath,
 };
 const successfulRun = createKiroRunResult();
 
 async function runMain(): Promise<void> {
   const { run } = await import('../src/main.js');
-  await run();
+  await run(actionPath);
 }
 
 beforeEach(() => {
@@ -126,7 +127,7 @@ describe('headless review orchestration', () => {
     expect(mocks.resolveReviewMode).toHaveBeenCalledWith(inputs, target, comment);
     expect(mocks.reviewTarget).toHaveBeenCalledWith(mode, target);
     expect(mocks.prepareWorkspace).toHaveBeenCalledWith(target, inputs.githubToken);
-    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs);
+    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs, actionPath);
     expect(mocks.runReview).toHaveBeenCalledWith(runtime, inputs, mode);
     expect(mocks.reportRun).toHaveBeenCalledWith(successfulRun);
   });
@@ -172,7 +173,7 @@ describe('headless review orchestration', () => {
     await runMain();
 
     expect(mocks.prepareWorkspace).not.toHaveBeenCalled();
-    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs);
+    expect(mocks.prepareRuntime).toHaveBeenCalledWith(inputs, actionPath);
   });
 
   it('maps unexpected errors to setup_error', async () => {

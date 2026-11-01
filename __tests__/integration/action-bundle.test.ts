@@ -33,6 +33,8 @@ function execute(scenario: string): {
   const root = mkdtempSync(join(tmpdir(), 'kiro-bundle-'));
   temporaryDirectories.push(root);
   const home = join(root, 'home');
+  const workspace = join(root, 'workspace');
+  const compositeActionPath = join(root, 'composite-action');
   const runnerTemp = join(root, 'runner');
   const toolCache = join(root, 'tool-cache');
   const kiroDirectories = ['gnu', 'musl'].map((variant) =>
@@ -47,6 +49,7 @@ function execute(scenario: string): {
   const chatScript = `#!/bin/sh\nexport FAKE_KIRO_CLI_SCENARIO=${scenario}\nexec node ${JSON.stringify(fixture)} "$@"\n`;
 
   mkdirSync(home, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
   mkdirSync(runnerTemp, { recursive: true });
   for (const directory of kiroDirectories) {
     const launcher = join(directory, 'kiro-cli');
@@ -68,7 +71,7 @@ function execute(scenario: string): {
   const platformShim =
     "Object.defineProperty(process, 'platform', { value: 'linux' }); require(process.argv[1]);";
   const result = spawnSync(process.execPath, ['-e', platformShim, bundle], {
-    cwd: repository,
+    cwd: workspace,
     encoding: 'utf8',
     timeout: 10_000,
     env: {
@@ -76,7 +79,7 @@ function execute(scenario: string): {
       HOME: home,
       RUNNER_TEMP: realpathSync(runnerTemp),
       RUNNER_TOOL_CACHE: realpathSync(toolCache),
-      GITHUB_ACTION_PATH: repository,
+      GITHUB_ACTION_PATH: compositeActionPath,
       GITHUB_OUTPUT: githubOutput,
       GITHUB_STATE: githubState,
       INPUT_KIRO_API_KEY: 'x',
