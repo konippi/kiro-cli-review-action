@@ -7,12 +7,13 @@ vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 describe('buildToolPolicy', () => {
   it('accepts the bundled default tool policy without dropped-entry logs', () => {
     const policy = buildToolPolicy(
-      { tools: ['read', 'grep', 'glob', '@github'], allowedTools: ['@github'] },
+      { tools: ['read', 'grep', 'glob', '@review'], allowedTools: ['@review'] },
       [],
+      true,
     );
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github']);
-    expect(policy.allowedTools).toEqual(['@github']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review']);
+    expect(policy.allowedTools).toEqual(['@review']);
     expect(core.info).not.toHaveBeenCalled();
     expect(core.warning).not.toHaveBeenCalled();
   });
@@ -23,10 +24,10 @@ describe('buildToolPolicy', () => {
       tools: ['*', '@jira'],
       allowedTools: ['@builtin', 'code', 'read'],
     };
-    const policy = buildToolPolicy(source, customServerNames(source.mcpServers));
+    const policy = buildToolPolicy(source, customServerNames(source.mcpServers), true);
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github', '@jira']);
-    expect(policy.allowedTools).toEqual(['@github']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review', '@jira']);
+    expect(policy.allowedTools).toEqual(['@review']);
     expect(core.info).toHaveBeenCalledTimes(1);
     expect(core.info).toHaveBeenCalledWith(
       'Review agent auto-approves custom MCP servers only; dropped allowedTools: @builtin, code, read',
@@ -36,16 +37,17 @@ describe('buildToolPolicy', () => {
   it('preserves selectors and auto-approvals for declared custom MCP servers', () => {
     const policy = buildToolPolicy(
       {
-        tools: ['@jira', 'fs_write', '@jira/read_*', '@github/read_*'],
+        tools: ['@jira', 'fs_write', '@jira/read_*', '@review/read_*'],
         allowedTools: ['@jira/search', '*'],
       },
       ['jira'],
+      true,
     );
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github', '@jira']);
-    expect(policy.allowedTools).toEqual(['@github', '@jira/search']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review', '@jira']);
+    expect(policy.allowedTools).toEqual(['@review', '@jira/search']);
     expect(core.info).toHaveBeenCalledWith(
-      'Review agent exposes read, grep, glob and MCP servers only; dropped tools: fs_write, @jira/read_*, @github/read_*',
+      'Review agent exposes read, grep, glob and MCP servers only; dropped tools: fs_write, @jira/read_*, @review/read_*',
     );
     expect(core.warning).not.toHaveBeenCalled();
     expect(core.info).toHaveBeenCalledWith(
@@ -58,18 +60,18 @@ describe('buildToolPolicy', () => {
       name: 'server-wide exposure',
       tools: ['@jira'],
       allowedTools: ['@jira/read_*', '@jira/*_get', '@*/status', '@jira-*', '@jira-*/x', 'fs_*'],
-      expected: ['@github', '@jira/read_*', '@jira/*_get'],
+      expected: ['@review', '@jira/read_*', '@jira/*_get'],
       dropped: '@*/status, @jira-*, @jira-*/x, fs_*',
     },
     {
       name: 'granular-only exposure',
       tools: ['@jira/search'],
       allowedTools: ['@jira/read_*'],
-      expected: ['@github'],
+      expected: ['@review'],
       dropped: '@jira/read_*',
     },
   ])('handles allowedTools wildcards with $name', ({ tools, allowedTools, expected, dropped }) => {
-    const policy = buildToolPolicy({ tools, allowedTools }, ['jira']);
+    const policy = buildToolPolicy({ tools, allowedTools }, ['jira'], true);
 
     expect(policy.allowedTools).toEqual(expected);
     expect(core.info).toHaveBeenCalledWith(
@@ -84,17 +86,18 @@ describe('buildToolPolicy', () => {
         allowedTools: ['@jira/search', '@jira', '@jira/other'],
       },
       ['jira'],
+      true,
     );
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github', '@jira/search']);
-    expect(policy.allowedTools).toEqual(['@github', '@jira/search']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review', '@jira/search']);
+    expect(policy.allowedTools).toEqual(['@review', '@jira/search']);
   });
 
   it('drops non-string exposure and auto-approval entries', () => {
-    const policy = buildToolPolicy({ tools: [42], allowedTools: [{ unsafe: true }] }, []);
+    const policy = buildToolPolicy({ tools: [42], allowedTools: [{ unsafe: true }] }, [], true);
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github']);
-    expect(policy.allowedTools).toEqual(['@github']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review']);
+    expect(policy.allowedTools).toEqual(['@review']);
     expect(core.info).toHaveBeenCalledWith(
       'Review agent exposes read, grep, glob and MCP servers only; dropped tools: 42',
     );
@@ -104,18 +107,18 @@ describe('buildToolPolicy', () => {
   });
 
   it('formats undefined dropped tool entries without throwing', () => {
-    const policy = buildToolPolicy({ tools: [undefined] }, []);
+    const policy = buildToolPolicy({ tools: [undefined] }, [], true);
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review']);
     expect(core.info).toHaveBeenCalledWith(
       'Review agent exposes read, grep, glob and MCP servers only; dropped tools: undefined',
     );
   });
 
   it('warns about selectors for undeclared MCP servers without double-reporting', () => {
-    const policy = buildToolPolicy({ tools: ['@unknown'] }, []);
+    const policy = buildToolPolicy({ tools: ['@unknown'] }, [], true);
 
-    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@github']);
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@review']);
     expect(core.info).not.toHaveBeenCalled();
     expect(core.warning).toHaveBeenCalledWith(
       'Review agent dropped selectors for undeclared MCP servers: @unknown',
@@ -134,6 +137,7 @@ describe('buildToolPolicy', () => {
         },
       },
       [],
+      true,
     );
 
     expect(policy.toolsSettings).toEqual({
@@ -149,18 +153,30 @@ describe('buildToolPolicy', () => {
     });
   });
 
+  it('omits the review server when the action does not start it', () => {
+    const policy = buildToolPolicy(
+      { tools: ['@review', '@jira'], allowedTools: ['@review', '@jira'] },
+      ['jira'],
+      false,
+    );
+
+    expect(policy.tools).toEqual(['read', 'grep', 'glob', '@jira']);
+    expect(policy.allowedTools).toEqual(['@jira']);
+    expect(core.info).not.toHaveBeenCalled();
+  });
+
   it('uses fixed defaults when source tools and allowedTools are absent', () => {
-    const policy = buildToolPolicy({}, []);
+    const policy = buildToolPolicy({}, [], true);
 
     expect(policy).toEqual({
-      tools: ['read', 'grep', 'glob', '@github'],
-      allowedTools: ['@github'],
+      tools: ['read', 'grep', 'glob', '@review'],
+      allowedTools: ['@review'],
       toolsSettings: {
         read: { allowedPaths: ['./**'] },
         grep: { allowedPaths: ['./**'] },
         glob: { allowedPaths: ['./**'] },
       },
     });
-    expect(customServerNames({ github: {}, jira: {}, search: {} })).toEqual(['jira', 'search']);
+    expect(customServerNames({ review: {}, jira: {}, search: {} })).toEqual(['jira', 'search']);
   });
 });

@@ -32,13 +32,10 @@ describe('parseInputs', () => {
     expect(core.setSecret).toHaveBeenCalledWith('test-key');
   });
 
-  it.each([
-    ['kiro_cli_version', '2.27.1', { kiroCliVersion: '2.27.1' }],
-    ['github_mcp_version', '0.23.0', { githubMcpVersion: '0.23.0' }],
-  ])('accepts the minimum supported %s', (input, version, expected) => {
-    useInputs({ [input]: version });
+  it('accepts the minimum supported kiro_cli_version', () => {
+    useInputs({ kiro_cli_version: '2.27.1' });
 
-    expect(parseInputs()).toMatchObject(expected);
+    expect(parseInputs().kiroCliVersion).toBe('2.27.1');
   });
 
   it('rejects kiro_cli_version below the minimum', () => {
@@ -46,14 +43,6 @@ describe('parseInputs', () => {
 
     expect(() => parseInputs()).toThrow(
       'Input kiro_cli_version is not supported: requested 2.27.0; supported versions are >=2.27.1',
-    );
-  });
-
-  it('rejects github_mcp_version below the minimum', () => {
-    useInputs({ github_mcp_version: '0.22.0' });
-
-    expect(() => parseInputs()).toThrow(
-      'Input github_mcp_version is not supported: requested 0.22.0; supported versions are >=0.23.0',
     );
   });
 
@@ -65,26 +54,16 @@ describe('parseInputs', () => {
     );
   });
 
-  it('rejects github_mcp_version latest', () => {
-    useInputs({ github_mcp_version: 'latest' });
-
-    expect(() => parseInputs()).toThrow(
-      'Input github_mcp_version must be an exact version in X.Y.Z format; received: latest',
-    );
-  });
-
   it('parses explicit input values', () => {
     useInputs({
       kiro_api_key: 'my-key',
       github_token: 'my-token',
-      max_diff_size: '5000',
       trigger_phrase: '/review',
       model: 'model-id',
     });
 
     expect(parseInputs()).toMatchObject({
       githubToken: 'my-token',
-      maxDiffSize: 5000,
       triggerPhrase: '/review',
       model: 'model-id',
     });
@@ -97,20 +76,6 @@ describe('parseInputs', () => {
 
     expect(parseInputs().debug).toBe(true);
     expect(getBooleanInput).toHaveBeenCalledWith('debug');
-  });
-
-  it.each(['1.5', '0', '9'.repeat(400)])('rejects max_diff_size %s', (value) => {
-    useInputs({ max_diff_size: value });
-
-    expect(() => parseInputs()).toThrow(
-      `Input max_diff_size must be an integer from 1 to ${Number.MAX_SAFE_INTEGER}; received: ${value}`,
-    );
-  });
-
-  it('accepts max_diff_size at its lower boundary', () => {
-    useInputs({ max_diff_size: '1' });
-
-    expect(parseInputs().maxDiffSize).toBe(1);
   });
 
   it.each([

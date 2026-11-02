@@ -2,16 +2,15 @@ import { join } from 'node:path';
 import * as core from '@actions/core';
 import { writeJsonFile } from '../fs.js';
 import { GENERATED_AGENT_NAME, loadAgent, type SourceAgentConfig } from './agent-loader.js';
-import { buildToolPolicy, customServerNames } from './tool-policy.js';
+import { buildToolPolicy, customServerNames, REVIEW_SERVER_NAME } from './tool-policy.js';
 
-const GITHUB_REVIEW_TOOLS = [
-  'pull_request_read',
-  'pull_request_review_write',
-  'add_comment_to_pending_review',
-] as const;
+interface ReviewServerCommand {
+  readonly command: string;
+  readonly args: readonly string[];
+}
 
 interface AgentConfigOptions {
-  readonly mcpServerBinary: string;
+  readonly reviewServer: ReviewServerCommand | null;
   readonly model: string;
   readonly ignoredFieldsSource?: SourceAgentConfig;
 }
@@ -22,7 +21,7 @@ interface WriteAgentConfigOptions {
   readonly kiroHome: string;
   readonly agent: string;
   readonly model: string;
-  readonly mcpServerBinary: string;
+  readonly reviewServer: ReviewServerCommand | null;
 }
 
 interface AgentConfig {
@@ -63,18 +62,17 @@ export function buildAgentConfig(
   const currentServers = copiedSource.mcpServers ?? {};
   const customServers = customServerNames(currentServers);
 
-  if (Object.hasOwn(currentServers, 'github')) {
-    core.warning("Replacing the agent's github MCP server with the one managed by the action");
+  const { [REVIEW_SERVER_NAME]: replacedServer, ...customServerConfigs } = currentServers;
+  if (replacedServer !== undefined) {
+    core.warning(
+      `Ignoring the agent's ${REVIEW_SERVER_NAME} MCP server because the action reserves that name`,
+    );
   }
-  const mcpServers = {
-    ...currentServers,
-    github: {
-      command: options.mcpServerBinary,
-      args: ['stdio', '--tools', GITHUB_REVIEW_TOOLS.join(',')],
-      env: { GITHUB_PERSONAL_ACCESS_TOKEN: `\${GITHUB_PERSONAL_ACCESS_TOKEN}` },
-    },
-  };
-  const policy = buildToolPolicy(copiedSource, customServers);
+  const mcpServers =
+    options.reviewServer === null
+      ? customServerConfigs
+      : { ...customServerConfigs, [REVIEW_SERVER_NAME]: options.reviewServer };
+  const policy = buildToolPolicy(copiedSource, customServers, options.reviewServer !== null);
   const agent: AgentConfig = {
     name: GENERATED_AGENT_NAME,
     mcpServers,
@@ -96,13 +94,13 @@ export function buildAgentConfig(
   return agent;
 }
 
-/** Resolves a trusted agent, injects GitHub MCP, and writes the generated agent securely. */
+/** Resolves a trusted agent, injects the review recorder, and writes the generated agent securely. */
 export function writeAgentConfig(options: WriteAgentConfigOptions): void {
   const { source, custom, sourcePath, model } = loadAgent(options);
   const policy = Object.hasOwn(custom, 'prompt') ? 'custom' : 'default';
   const customServers = customServerNames(source.mcpServers);
   const config = buildAgentConfig(source, {
-    mcpServerBinary: options.mcpServerBinary,
+    reviewServer: options.reviewServer,
     model,
     ignoredFieldsSource: custom,
   });

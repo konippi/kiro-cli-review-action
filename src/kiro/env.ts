@@ -20,7 +20,6 @@ export const ALLOWED_ENV_KEYS = [
 
 interface KiroEnvironmentOptions {
   readonly kiroApiKey: string;
-  readonly githubToken: string;
   readonly kiroHome: string;
   readonly kiroBinDir: string;
 }
@@ -54,13 +53,7 @@ export function buildKiroEnv(
   env.GITHUB_ACTIONS = 'true';
   env.TERM = 'dumb';
 
-  if (typeof parentEnv.GITHUB_SERVER_URL === 'string') {
-    const githubHost = new URL(parentEnv.GITHUB_SERVER_URL).origin;
-    if (githubHost !== 'https://github.com') env.GITHUB_HOST = githubHost;
-  }
-
   env.KIRO_API_KEY = options.kiroApiKey;
-  if (options.githubToken !== '') env.GITHUB_PERSONAL_ACCESS_TOKEN = options.githubToken;
 
   env.KIRO_HOME = options.kiroHome;
   env.KIRO_AGENT_CONFIG_DIR = join(options.kiroHome, 'agents');

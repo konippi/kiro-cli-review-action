@@ -2,6 +2,9 @@ import * as core from '@actions/core';
 import { isPlainObject } from '../guards.js';
 import type { SourceAgentConfig } from './agent-loader.js';
 
+/** MCP server name reserved for the action's review recorder. */
+export const REVIEW_SERVER_NAME = 'review';
+
 const REVIEW_TOOLS = ['read', 'grep', 'glob'] as const;
 const READ_TOOL_ALIASES = ['read', 'fs_read', 'fsRead'] as const;
 
@@ -32,10 +35,10 @@ function parseSelector(selector: string): ToolSelector | undefined {
   return tool === undefined ? { server } : { server, tool };
 }
 
-function isManagedGitHubSelector(
+function isReviewServerSelector(
   selector: ToolSelector | undefined,
-): selector is ToolSelector & { readonly server: 'github' } {
-  return selector?.server === 'github';
+): selector is ToolSelector & { readonly server: typeof REVIEW_SERVER_NAME } {
+  return selector?.server === REVIEW_SERVER_NAME;
 }
 
 function formatEntry(entry: unknown): string {
@@ -50,7 +53,11 @@ function appendUnique(values: string[], value: string): void {
   if (!values.includes(value)) values.push(value);
 }
 
-function buildTools(agent: SourceAgentConfig, customServers: readonly string[]): string[] {
+function buildTools(
+  agent: SourceAgentConfig,
+  customServers: readonly string[],
+  managedSelectors: readonly string[],
+): string[] {
   const selectors: string[] = [];
   const dropped: unknown[] = [];
   const undeclared: string[] = [];
@@ -69,7 +76,7 @@ function buildTools(agent: SourceAgentConfig, customServers: readonly string[]):
 
     const selector = parseSelector(entry);
     if (fixedTools.has(entry)) continue;
-    if (isManagedGitHubSelector(selector)) {
+    if (isReviewServerSelector(selector)) {
       if (hasWildcard(selector.tool ?? '')) dropped.push(entry);
       continue;
     }
@@ -100,12 +107,13 @@ function buildTools(agent: SourceAgentConfig, customServers: readonly string[]):
     );
   }
 
-  return [...REVIEW_TOOLS, '@github', ...selectors];
+  return [...REVIEW_TOOLS, ...managedSelectors, ...selectors];
 }
 
 function buildAllowedTools(
   agent: SourceAgentConfig,
   exposedSelectors: readonly string[],
+  managedSelectors: readonly string[],
 ): string[] {
   const selectors: string[] = [];
   const dropped: unknown[] = [];
@@ -117,7 +125,7 @@ function buildAllowedTools(
     }
 
     const selector = parseSelector(entry);
-    if (isManagedGitHubSelector(selector)) continue;
+    if (isReviewServerSelector(selector)) continue;
     if (
       selector !== undefined &&
       (exposedSelectors.includes(`@${selector.server}`) || exposedSelectors.includes(entry))
@@ -134,7 +142,7 @@ function buildAllowedTools(
     );
   }
 
-  return ['@github', ...selectors];
+  return [...managedSelectors, ...selectors];
 }
 
 function buildToolsSettings(agent: SourceAgentConfig): Record<string, unknown> {
@@ -155,20 +163,22 @@ function buildToolsSettings(agent: SourceAgentConfig): Record<string, unknown> {
   return settings;
 }
 
-/** Returns custom MCP server names, excluding the action-managed GitHub server. */
+/** Returns custom MCP server names, excluding the action-managed review server. */
 export function customServerNames(
   servers: Readonly<Record<string, unknown>> | undefined,
 ): string[] {
-  return Object.keys(servers ?? {}).filter((server) => server !== 'github');
+  return Object.keys(servers ?? {}).filter((server) => server !== REVIEW_SERVER_NAME);
 }
 
 /** Builds the constrained exposure, auto-approval, and path policy for review tools. */
 export function buildToolPolicy(
   source: SourceAgentConfig,
   customServers: readonly string[],
+  reviewServer: boolean,
 ): ToolPolicy {
-  const tools = buildTools(source, customServers);
-  const allowedTools = buildAllowedTools(source, tools);
+  const managedSelectors = reviewServer ? [`@${REVIEW_SERVER_NAME}`] : [];
+  const tools = buildTools(source, customServers, managedSelectors);
+  const allowedTools = buildAllowedTools(source, tools, managedSelectors);
   const toolsSettings = buildToolsSettings(source);
 
   return { tools, allowedTools, toolsSettings };

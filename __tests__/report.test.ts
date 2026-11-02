@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import { describe, expect, it, vi } from 'vitest';
-import { reportConclusion, reportRun } from '../src/report.js';
+import { reportConclusion, summarizeRun } from '../src/report.js';
 import { createKiroRunResult } from './helpers/run-result.js';
 
 vi.mock('@actions/core', () => ({
@@ -15,9 +15,8 @@ describe('action result reporting', () => {
 
     expect(core.setOutput).toHaveBeenCalledOnce();
     expect(core.setOutput).toHaveBeenCalledWith('conclusion', conclusion);
+    expect(core.info).toHaveBeenCalledWith('completed');
     expect(core.setFailed).not.toHaveBeenCalled();
-    if (conclusion === 'skipped') expect(core.info).toHaveBeenCalledWith('completed');
-    else expect(core.info).not.toHaveBeenCalled();
   });
 
   it('reports a failed run with its conclusion and message', () => {
@@ -29,8 +28,8 @@ describe('action result reporting', () => {
     expect(core.setFailed).toHaveBeenCalledWith('Kiro failed');
   });
 
-  it('JSON-encodes a session ID, logs the summary, and reports the result', () => {
-    reportRun(
+  it('JSON-encodes a session ID, logs the summary, and concludes the run', () => {
+    const run = summarizeRun(
       createKiroRunResult({
         sessionId: 'safe\n::add-mask::x',
         toolCalls: ['read'],
@@ -45,11 +44,11 @@ describe('action result reporting', () => {
       'Kiro summary: tool calls=1, failed tool calls=0, credits=1',
     );
     expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining('\n::add-mask::x'));
-    expect(core.setOutput).toHaveBeenCalledWith('conclusion', 'success');
+    expect(run.conclusion).toBe('success');
   });
 
   it('does not log an absent session ID', () => {
-    reportRun(createKiroRunResult());
+    summarizeRun(createKiroRunResult());
 
     expect(core.info).not.toHaveBeenCalledWith(expect.stringContaining('[kiro] Session:'));
   });

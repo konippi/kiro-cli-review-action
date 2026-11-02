@@ -1,11 +1,13 @@
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPullRequestTarget } from './helpers/context.js';
 import { createActionInputs } from './helpers/inputs.js';
+import { createTemporaryDirectory } from './helpers/temporary-directory.js';
 
 const mocks = vi.hoisted(() => ({
   installKiroCli: vi.fn(),
-  installGithubMcpServer: vi.fn(),
+  fetchReviewInput: vi.fn(),
   writeAgentConfig: vi.fn(),
   writeKiroSettings: vi.fn(),
   buildKiroEnv: vi.fn(),
@@ -18,8 +20,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/setup/kiro-cli.js', () => ({
   installKiroCli: mocks.installKiroCli,
 }));
-vi.mock('../src/setup/github-mcp.js', () => ({
-  installGithubMcpServer: mocks.installGithubMcpServer,
+vi.mock('../src/review/pull-request.js', () => ({
+  fetchReviewInput: mocks.fetchReviewInput,
 }));
 vi.mock('../src/kiro/agent-loader.js', () => ({
   GENERATED_AGENT_NAME: 'kiro-review-action',
@@ -40,54 +42,46 @@ import { prepareRuntime, runReview } from '../src/runtime.js';
 import { createKiroRunResult } from './helpers/run-result.js';
 
 const actionPath = '/action';
+const target = createPullRequestTarget();
 const inputs = createActionInputs({
   agent: 'reviewer',
   model: 'model-id',
 });
+const reviewInput = { pullRequest: { number: 42 }, files: [] };
+
+let runnerTemp: string;
 
 beforeEach(() => {
-  process.env.RUNNER_TEMP = '/runner/temp';
+  runnerTemp = createTemporaryDirectory();
+  vi.stubEnv('RUNNER_TEMP', runnerTemp);
   mocks.installKiroCli.mockResolvedValue('/bin/kiro');
-  mocks.installGithubMcpServer.mockResolvedValue('/bin/github-mcp-server');
+  mocks.fetchReviewInput.mockResolvedValue(reviewInput);
 });
 
 describe('prepareRuntime', () => {
-  it('rejects a missing RUNNER_TEMP before starting either installer', async () => {
-    delete process.env.RUNNER_TEMP;
+  it('rejects a missing RUNNER_TEMP before installing Kiro or fetching the pull request', async () => {
+    vi.stubEnv('RUNNER_TEMP', '');
 
-    await expect(prepareRuntime(inputs, actionPath)).rejects.toThrow('RUNNER_TEMP is not defined');
+    await expect(prepareRuntime(inputs, actionPath, target)).rejects.toThrow(
+      'RUNNER_TEMP is not defined',
+    );
 
     expect(mocks.installKiroCli).not.toHaveBeenCalled();
-    expect(mocks.installGithubMcpServer).not.toHaveBeenCalled();
+    expect(mocks.fetchReviewInput).not.toHaveBeenCalled();
   });
 
-  it('starts both tool-cache installers before either resolves', async () => {
-    const kiro = Promise.withResolvers<string>();
-    const mcp = Promise.withResolvers<string>();
-    mocks.installKiroCli.mockReturnValue(kiro.promise);
-    mocks.installGithubMcpServer.mockReturnValue(mcp.promise);
+  it('writes the agent and settings without a review server in prompt mode', async () => {
+    const runtime = await prepareRuntime(inputs, actionPath, null);
 
-    const preparing = prepareRuntime(inputs, actionPath);
-
-    expect(mocks.installKiroCli).toHaveBeenCalledWith(inputs.kiroCliVersion);
-    expect(mocks.installGithubMcpServer).toHaveBeenCalledWith(inputs.githubMcpVersion);
-
-    kiro.resolve('/bin/kiro');
-    mcp.resolve('/bin/github-mcp-server');
-    await preparing;
-  });
-
-  it('writes the agent and settings with the resolved runner paths', async () => {
-    const runtime = await prepareRuntime(inputs, actionPath);
-
-    const kiroHome = join('/runner/temp', 'kiro-review', 'kiro-home');
+    const kiroHome = join(runnerTemp, 'kiro-review', 'kiro-home');
+    expect(mocks.fetchReviewInput).not.toHaveBeenCalled();
     expect(mocks.writeAgentConfig).toHaveBeenCalledWith({
       workspace: process.cwd(),
       actionPath,
       kiroHome,
       agent: inputs.agent,
       model: inputs.model,
-      mcpServerBinary: '/bin/github-mcp-server',
+      reviewServer: null,
     });
     expect(mocks.writeKiroSettings).toHaveBeenCalledWith(kiroHome);
     expect(runtime).toEqual({
@@ -95,14 +89,44 @@ describe('prepareRuntime', () => {
       workspace: process.cwd(),
       kiroHome,
       actionPath,
+      review: null,
     });
+  });
+
+  it('fetches the pull request while installing Kiro and starts the recorder on a fresh directory', async () => {
+    const directory = join(runnerTemp, 'kiro-review', 'review');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'proposal.json'), '{}');
+    const kiro = Promise.withResolvers<string>();
+    mocks.installKiroCli.mockReturnValue(kiro.promise);
+
+    const preparing = prepareRuntime(inputs, actionPath, target);
+
+    expect(mocks.installKiroCli).toHaveBeenCalledWith(inputs.kiroCliVersion);
+    expect(mocks.fetchReviewInput).toHaveBeenCalledWith(target, inputs.githubToken);
+    kiro.resolve('/bin/kiro');
+    const runtime = await preparing;
+
+    expect(runtime.review).toEqual({ target, directory, input: reviewInput });
+    expect(readdirSync(directory)).toEqual(['pull-request.json']);
+    expect(JSON.parse(readFileSync(join(directory, 'pull-request.json'), 'utf8'))).toEqual(
+      reviewInput,
+    );
+    expect(mocks.writeAgentConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewServer: {
+          command: process.execPath,
+          args: [join(actionPath, 'dist', 'mcp', 'index.cjs'), '--directory', directory],
+        },
+      }),
+    );
   });
 
   it('propagates installer failures without writing runtime configuration', async () => {
     const failure = new Error('install failed');
     mocks.installKiroCli.mockRejectedValue(failure);
 
-    await expect(prepareRuntime(inputs, actionPath)).rejects.toBe(failure);
+    await expect(prepareRuntime(inputs, actionPath, target)).rejects.toBe(failure);
 
     expect(mocks.writeAgentConfig).not.toHaveBeenCalled();
     expect(mocks.writeKiroSettings).not.toHaveBeenCalled();
@@ -110,12 +134,13 @@ describe('prepareRuntime', () => {
 });
 
 describe('runReview', () => {
-  const reviewMode = { kind: 'pull_request', target: createPullRequestTarget() } as const;
+  const reviewMode = { kind: 'pull_request', target } as const;
   const reviewRuntime = {
     kiroBinary: '/bin/kiro',
     workspace: '/workspace',
     kiroHome: '/kiro-home',
     actionPath,
+    review: null,
   };
 
   beforeEach(() => {
@@ -127,14 +152,9 @@ describe('runReview', () => {
   it('builds the prompt and environment and runs Kiro with runtime options', async () => {
     await runReview(reviewRuntime, inputs, reviewMode);
 
-    expect(mocks.buildPrompt).toHaveBeenCalledWith(
-      reviewMode,
-      reviewRuntime.actionPath,
-      inputs.maxDiffSize,
-    );
+    expect(mocks.buildPrompt).toHaveBeenCalledWith(reviewMode, reviewRuntime.actionPath);
     expect(mocks.buildKiroEnv).toHaveBeenCalledWith(process.env, {
       kiroApiKey: inputs.kiroApiKey,
-      githubToken: inputs.githubToken,
       kiroHome: reviewRuntime.kiroHome,
       kiroBinDir: dirname(reviewRuntime.kiroBinary),
     });

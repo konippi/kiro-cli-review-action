@@ -9,10 +9,8 @@ export function createActionInputs(overrides: Partial<ActionInputs> = {}): Actio
     model: '',
     prompt: '',
     triggerPhrase: '@kiro',
-    maxDiffSize: 10_000,
     timeoutMinutes: 10,
     debug: false,
-    githubMcpVersion: '0.32.0',
     kiroCliVersion: '2.27.1',
     ...overrides,
   };

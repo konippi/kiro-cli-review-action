@@ -46,19 +46,10 @@ function generatedAgentPolicyIsValid(agentConfigDirectory: string): boolean {
 
   if (!isRecord(parsedAgent)) return false;
 
-  const mcpServers = parsedAgent.mcpServers;
-  const github = isRecord(mcpServers) ? mcpServers.github : undefined;
-  const args = isRecord(github) ? github.args : undefined;
-
   return (
-    JSON.stringify(parsedAgent.tools) === JSON.stringify(['read', 'grep', 'glob', '@github']) &&
-    JSON.stringify(parsedAgent.allowedTools) === JSON.stringify(['@github']) &&
-    JSON.stringify(args) ===
-      JSON.stringify([
-        'stdio',
-        '--tools',
-        'pull_request_read,pull_request_review_write,add_comment_to_pending_review',
-      ])
+    JSON.stringify(parsedAgent.mcpServers) === '{}' &&
+    JSON.stringify(parsedAgent.tools) === JSON.stringify(['read', 'grep', 'glob']) &&
+    JSON.stringify(parsedAgent.allowedTools) === '[]'
   );
 }
 
