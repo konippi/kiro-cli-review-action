@@ -1,4 +1,5 @@
-import { writeJsonFileAtomic } from '../fs.js';
+import * as z from 'zod/v4';
+import { readJsonFile, writeJsonFileAtomic } from '../fs.js';
 import type { DiffSide } from './diff.js';
 
 /** Shared limits for recorded review proposals. */
@@ -27,6 +28,22 @@ export interface ReviewProposal {
   readonly summary: string;
   readonly findings: readonly ReviewFinding[];
 }
+
+const ReviewProposalSchema = z.strictObject({
+  summary: z.string().max(REVIEW_LIMITS.summaryBody),
+  findings: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        path: z.string().min(1),
+        side: z.enum(['RIGHT', 'LEFT']),
+        line: z.number().int().min(1),
+        startLine: z.number().int().min(1).exactOptional(),
+        body: z.string().max(REVIEW_LIMITS.findingBody),
+      }),
+    )
+    .max(REVIEW_LIMITS.publishedFindings),
+});
 
 /** Reason the review cannot change. */
 export type ProposalFailure =
@@ -115,4 +132,15 @@ export function createReviewRecorder(proposalPath: string): ReviewRecorder {
       return { ok: true };
     },
   };
+}
+
+/** Reads and validates the proposal file written by the review recorder. */
+export function readReviewProposal(path: string): ReviewProposal {
+  const result = ReviewProposalSchema.safeParse(readJsonFile(path));
+  if (!result.success) {
+    throw new Error(`Invalid review proposal in ${path}\n${z.prettifyError(result.error)}`, {
+      cause: result.error,
+    });
+  }
+  return result.data;
 }

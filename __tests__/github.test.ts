@@ -103,7 +103,9 @@ describe('authorizeCommentTrigger', () => {
   );
 
   it('reports a 404 as a commenter who is not a collaborator', async () => {
-    getCollaboratorPermissionLevel.mockRejectedValueOnce({ status: 404 });
+    getCollaboratorPermissionLevel.mockRejectedValueOnce(
+      Object.assign(new Error('Not Found'), { status: 404 }),
+    );
 
     await expect(
       authorizeCommentTrigger('test-owner', 'test-repo', 'trusted-user', 'token'),
