@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!!**/dist", "!!**/coverage"]
+    "includes": ["**", "!**/*.md", "!!**/dist", "!!**/coverage"]
   },
   "formatter": {
     "enabled": true,
@@ -36,6 +36,11 @@
       "trailingCommas": "all",
       "arrowParentheses": "always",
       "bracketSpacing": true
+    }
+  },
+  "yaml": {
+    "formatter": {
+      "quoteStyle": "single"
     }
   },
   "json": {
