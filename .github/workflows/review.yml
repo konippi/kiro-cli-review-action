@@ -33,6 +33,6 @@ jobs:
           persist-credentials: false
 
       - name: Kiro Review
-        uses: konippi/kiro-cli-review-action@2c6a77b62821fc7c1e47c2072279e3b7c07caa55 # v2.0.2
+        uses: konippi/kiro-cli-review-action@5f727a41e7be39365fddea334388effb394e398e # v3.0.0
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
