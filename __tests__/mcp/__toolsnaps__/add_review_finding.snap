@@ -1,0 +1,55 @@
+{
+  "name": "add_review_finding",
+  "title": "Add review finding",
+  "description": "Records one inline finding in the draft review and returns its finding_id. Nothing is posted until submit_review publishes the findings you select. Up to 30 can be recorded.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "pattern": "\\S",
+        "description": "A path from get_review_context."
+      },
+      "side": {
+        "type": "string",
+        "enum": [
+          "RIGHT",
+          "LEFT"
+        ],
+        "description": "RIGHT for an R anchor, LEFT for an L anchor."
+      },
+      "line": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991,
+        "description": "Anchor number. For a range, its last line."
+      },
+      "start_line": {
+        "description": "First line of a range, on the same side and in the same @@ hunk as line.",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "body": {
+        "type": "string",
+        "maxLength": 4000,
+        "pattern": "\\S",
+        "description": "Markdown: the problem, when it occurs, and the fix."
+      }
+    },
+    "required": [
+      "path",
+      "side",
+      "line",
+      "body"
+    ],
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

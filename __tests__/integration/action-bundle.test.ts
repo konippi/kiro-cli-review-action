@@ -3,26 +3,20 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { beforeAll, describe, expect, it, onTestFinished } from 'vitest';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 const repository = process.cwd();
 const bundle = join(repository, 'dist', 'main', 'index.cjs');
+const mcpBundle = join(repository, 'dist', 'mcp', 'index.cjs');
 const fixture = join(repository, '__tests__', 'fixtures', 'fake-kiro-cli.ts');
-const temporaryDirectories: string[] = [];
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
 
 function execute(scenario: string): {
   status: number | null;
@@ -30,8 +24,7 @@ function execute(scenario: string): {
   stderr: string;
   stdout: string;
 } {
-  const root = mkdtempSync(join(tmpdir(), 'kiro-bundle-'));
-  temporaryDirectories.push(root);
+  const root = createTemporaryDirectory();
   const home = join(root, 'home');
   const workspace = join(root, 'workspace');
   const compositeActionPath = join(root, 'composite-action');
@@ -110,14 +103,13 @@ function execute(scenario: string): {
 describe('built action bundle', () => {
   beforeAll(() => {
     if (!existsSync(bundle)) throw new Error(`Built action bundle is missing: ${bundle}`);
+    if (!existsSync(mcpBundle)) throw new Error(`Built MCP bundle is missing: ${mcpBundle}`);
   });
 
   it('writes successful outputs', () => {
     const result = execute('success');
 
-    if (result.status !== 0) {
-      throw new Error(`${result.stderr}\n${result.stdout}\n${result.output}`);
-    }
+    expect(result.status, `${result.stderr}\n${result.stdout}\n${result.output}`).toBe(0);
     expect(result.output).toMatch(/conclusion<<[^\n]+\nsuccess\n/);
   });
 
@@ -126,5 +118,40 @@ describe('built action bundle', () => {
 
     expect(result.status).toBe(1);
     expect(result.output).toMatch(/conclusion<<[^\n]+\nmcp_startup_failure\n/);
+  });
+
+  it('starts the review bundle over stdio and lists its tools', async () => {
+    const directory = createTemporaryDirectory();
+    writeFileSync(
+      join(directory, 'pull-request.json'),
+      JSON.stringify({
+        pullRequest: {
+          number: 1,
+          title: 'Title',
+          body: '',
+          author: 'octocat',
+          baseRef: 'main',
+          headRef: 'feature',
+          changedFiles: 0,
+        },
+        files: [],
+      }),
+    );
+
+    const client = new Client({ name: 'bundle-test', version: '1.0.0' });
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [mcpBundle, '--directory', directory],
+      }),
+    );
+    onTestFinished(() => client.close());
+
+    expect((await client.listTools()).tools.map(({ name }) => name)).toEqual([
+      'get_review_context',
+      'get_review_diff',
+      'add_review_finding',
+      'submit_review',
+    ]);
   });
 });

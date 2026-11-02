@@ -1,0 +1,30 @@
+{
+  "name": "get_review_diff",
+  "title": "Get review diff",
+  "description": "Returns one page of a changed file's diff. Commentable lines start with an anchor: R<n> for a new-file line, L<n> for an old-file line. Lines without an anchor cannot be commented on.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "pattern": "\\S",
+        "description": "A path from get_review_context."
+      },
+      "page": {
+        "description": "Up to the file's diff_pages. Defaults to 1.",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "openWorldHint": false
+  }
+}
