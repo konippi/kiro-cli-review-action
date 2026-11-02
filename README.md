@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: konippi/kiro-cli-review-action@v2
+      - uses: konippi/kiro-cli-review-action@v3
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: konippi/kiro-cli-review-action@v2
+      - uses: konippi/kiro-cli-review-action@v3
         with:
           kiro_api_key: ${{ secrets.KIRO_API_KEY }}
 ```
@@ -113,7 +113,7 @@ The step fails for every conclusion except `success` and `skipped`. Use `steps.<
 
 ```yaml
 - id: review
-  uses: konippi/kiro-cli-review-action@v2
+  uses: konippi/kiro-cli-review-action@v3
   continue-on-error: true
   with:
     kiro_api_key: ${{ secrets.KIRO_API_KEY }}
