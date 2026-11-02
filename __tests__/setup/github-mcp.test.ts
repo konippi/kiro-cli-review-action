@@ -1,8 +1,8 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolInstallSpec } from '../../src/setup/download.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 const mocks = vi.hoisted(() => ({
   fetchText: vi.fn(),
@@ -14,18 +14,10 @@ vi.mock('../../src/setup/download.js', () => ({
   installTool: mocks.installTool,
 }));
 
-const temporaryDirectories: string[] = [];
 const MCP_VERSION = '0.32.0';
 const MINIMUM_MCP_VERSION = '0.23.0';
 const MCP_SHA256 = 'c90fcbd681b716fdb845cc6e19f88fac1c26fec0b8084b11ef39fc410a17e304';
 let resolvedSha256: string | undefined;
-
-function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'setup-github-mcp-'));
-  temporaryDirectories.push(directory);
-
-  return directory;
-}
 
 function useRunner(platform: NodeJS.Platform, arch: NodeJS.Architecture): void {
   vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
@@ -45,7 +37,6 @@ async function loadGithubMcp(): Promise<typeof import('../../src/setup/github-mc
 
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
   resolvedSha256 = undefined;
   useRunner('linux', 'x64');
   mocks.installTool.mockImplementation(async (spec) => {
@@ -53,13 +44,6 @@ beforeEach(() => {
 
     return '/tool-cache/github-mcp-server';
   });
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });
 
 describe('installGithubMcpServer', () => {
@@ -165,7 +149,7 @@ describe('installGithubMcpServer', () => {
   });
 
   it('rejects a non-executable binary before caching a fresh extraction', async () => {
-    const extractionDirectory = temporaryDirectory();
+    const extractionDirectory = createTemporaryDirectory();
     const binary = join(extractionDirectory, 'github-mcp-server');
     writeFileSync(binary, 'github-mcp-server');
     chmodSync(binary, 0o644);
@@ -185,7 +169,7 @@ describe('installGithubMcpServer', () => {
   });
 
   it('accepts an executable binary in a fresh extraction', async () => {
-    const extractionDirectory = temporaryDirectory();
+    const extractionDirectory = createTemporaryDirectory();
     const binary = join(extractionDirectory, 'github-mcp-server');
     writeFileSync(binary, 'github-mcp-server');
     chmodSync(binary, 0o755);

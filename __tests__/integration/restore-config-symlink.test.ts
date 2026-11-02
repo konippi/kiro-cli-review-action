@@ -1,14 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,15 +12,15 @@ vi.mock('node:child_process', () => ({
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
 import { restoreConfigFromBase } from '../../src/restore-config.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 let originalCwd: string;
 let root: string;
 let workspace: string;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   originalCwd = process.cwd();
-  root = mkdtempSync(join(tmpdir(), 'kiro-v1-snapshot-'));
+  root = createTemporaryDirectory();
   workspace = join(root, 'workspace');
   mkdirSync(workspace);
   process.chdir(workspace);
@@ -37,7 +28,6 @@ beforeEach(() => {
 
 afterEach(() => {
   process.chdir(originalCwd);
-  rmSync(root, { recursive: true, force: true });
 });
 
 describe('PR config snapshot symlink safety', () => {

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 const mocks = vi.hoisted(() => ({
   cacheDir: vi.fn(),
@@ -25,17 +25,8 @@ vi.mock('@actions/tool-cache', () => ({
 }));
 vi.mock('@actions/core', () => ({ info: vi.fn() }));
 
-const temporaryDirectories: string[] = [];
-
-function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'setup-download-'));
-  temporaryDirectories.push(directory);
-
-  return directory;
-}
-
 function temporaryFile(content: string): string {
-  const path = join(temporaryDirectory(), 'download');
+  const path = join(createTemporaryDirectory(), 'download');
   writeFileSync(path, content);
 
   return path;
@@ -51,20 +42,11 @@ async function loadDownload(): Promise<typeof import('../../src/setup/download.j
 
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
   mocks.rm.mockImplementation(async (path: string) => {
     rmSync(path, { recursive: true, force: true });
   });
   mocks.find.mockReturnValue('');
   mocks.cacheDir.mockResolvedValue('/tool-cache/tool/1.2.3/x64');
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });
 
 describe('fetchText', () => {
@@ -79,8 +61,8 @@ describe('fetchText', () => {
   });
 
   it('preserves a read rejection when cleanup also rejects', async () => {
-    const download = join(temporaryDirectory(), 'broken-link');
-    symlinkSync(join(temporaryDirectory(), 'missing'), download);
+    const download = join(createTemporaryDirectory(), 'broken-link');
+    symlinkSync(join(createTemporaryDirectory(), 'missing'), download);
     mocks.downloadTool.mockResolvedValue(download);
     mocks.rm.mockRejectedValue(new Error('cleanup failed'));
     const { fetchText } = await loadDownload();
@@ -149,7 +131,7 @@ describe('installTool', () => {
 
   it('downloads, verifies a joined archive directory, caches, and cleans up', async () => {
     const archive = temporaryFile('archive');
-    const runnerTemporaryDirectory = temporaryDirectory();
+    const runnerTemporaryDirectory = createTemporaryDirectory();
     vi.stubEnv('RUNNER_TEMP', runnerTemporaryDirectory);
     let extractionDirectory: string | undefined;
     mocks.downloadTool.mockResolvedValue(archive);

@@ -15,7 +15,7 @@ function isNotFoundError(error: unknown): error is { status: number } {
   );
 }
 
-/** Reacts to the triggering comment; failures are logged and never fail the review. */
+/** Reacts to the triggering comment, logging failures without failing the review. */
 export async function acknowledgeComment(
   owner: string,
   repo: string,

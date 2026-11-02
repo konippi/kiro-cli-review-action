@@ -1,12 +1,8 @@
 import * as core from '@actions/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildToolPolicy, customServerNames } from '../../src/kiro/tool-policy.js';
 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
-
-afterEach(() => {
-  vi.clearAllMocks();
-});
 
 describe('buildToolPolicy', () => {
   it('accepts the bundled default tool policy without dropped-entry logs', () => {

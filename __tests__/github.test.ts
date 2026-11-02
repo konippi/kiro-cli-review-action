@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createPullRequestTarget } from './helpers/context.js';
 
 const githubMocks = vi.hoisted(() => {
@@ -39,10 +39,6 @@ import {
 } from '../src/github.js';
 
 const sha = '0123456789abcdef0123456789abcdef01234567';
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe('acknowledgeComment', () => {
   it('adds an eyes reaction to the triggering comment', async () => {

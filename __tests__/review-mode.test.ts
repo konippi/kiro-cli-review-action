@@ -34,7 +34,6 @@ const comment = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   githubMocks.fetchCommentPullRequest.mockResolvedValue({ ...target, prNumber: 10 });
 });
 

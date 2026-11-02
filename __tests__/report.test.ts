@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { reportConclusion, reportRun } from '../src/report.js';
 import { createKiroRunResult } from './helpers/run-result.js';
 
@@ -8,10 +8,6 @@ vi.mock('@actions/core', () => ({
   setFailed: vi.fn(),
   setOutput: vi.fn(),
 }));
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe('action result reporting', () => {
   it.each(['skipped', 'success'] as const)('reports %s without failing the job', (conclusion) => {

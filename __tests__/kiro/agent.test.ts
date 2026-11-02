@@ -1,28 +1,13 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as core from '@actions/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildAgentConfig, writeAgentConfig } from '../../src/kiro/agent.js';
 import { GENERATED_AGENT_NAME } from '../../src/kiro/agent-loader.js';
 import { writeBundledAgent, writeJson } from '../helpers/agent.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
-
-const temporaryDirectories: string[] = [];
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-  vi.clearAllMocks();
-});
-
-function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'kiro-agent-'));
-  temporaryDirectories.push(directory);
-  return directory;
-}
 
 describe('buildAgentConfig', () => {
   it('deep copies returned nested source fields', () => {
@@ -118,7 +103,7 @@ describe('buildAgentConfig', () => {
 
 describe('writeAgentConfig', () => {
   it('exposes every tool named by the bundled review prompt', () => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const kiroHome = join(root, 'kiro-home');
     const actionPath = process.cwd();
 
@@ -149,7 +134,7 @@ describe('writeAgentConfig', () => {
   });
 
   it('uses the bundled agent and writes it under KIRO_HOME without writing settings', () => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     const kiroHome = join(root, 'kiro-home');
@@ -183,7 +168,7 @@ describe('writeAgentConfig', () => {
   });
 
   it('reports ignored fields once and only from the custom agent', () => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     const kiroHome = join(root, 'kiro-home');

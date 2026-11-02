@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import * as core from '@actions/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { run } from '../src/cleanup.js';
 import { getKiroPid } from '../src/state.js';
 
@@ -20,13 +20,15 @@ async function runCleanup(): Promise<void> {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   readKiroPid.mockReturnValue(undefined);
 });
 
 describe('post cleanup', () => {
   it('kills the process group with SIGTERM then SIGKILL after the grace period', async () => {
     vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     readKiroPid.mockReturnValue(1234);
     const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
 
@@ -36,12 +38,13 @@ describe('post cleanup', () => {
 
     expect(kill).toHaveBeenNthCalledWith(1, -1234, 'SIGTERM');
     expect(kill).toHaveBeenNthCalledWith(2, -1234, 'SIGKILL');
-    kill.mockRestore();
-    vi.useRealTimers();
   });
 
   it('falls back to signaling the leader when group signaling fails', async () => {
     vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     readKiroPid.mockReturnValue(1234);
     const kill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
       if (pid < 0) throw new Error('no group');
@@ -54,12 +57,13 @@ describe('post cleanup', () => {
 
     expect(kill).toHaveBeenCalledWith(1234, 'SIGTERM');
     expect(kill).toHaveBeenCalledWith(1234, 'SIGKILL');
-    kill.mockRestore();
-    vi.useRealTimers();
   });
 
   it('does not wait or send SIGKILL when both SIGTERM targets are already gone', async () => {
     vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     readKiroPid.mockReturnValue(1234);
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
       throw Object.assign(new Error('process gone'), { code: 'ESRCH' });
@@ -73,8 +77,6 @@ describe('post cleanup', () => {
     expect(kill).not.toHaveBeenCalledWith(expect.any(Number), 'SIGKILL');
     expect(vi.getTimerCount()).toBe(0);
     expect(core.info).toHaveBeenCalledWith('Cleanup complete');
-    kill.mockRestore();
-    vi.useRealTimers();
   });
 
   it('removes the review workspace', async () => {
@@ -84,7 +86,7 @@ describe('post cleanup', () => {
   });
 
   it('ignores file removal failures', async () => {
-    vi.mocked(rmSync).mockImplementation(() => {
+    vi.mocked(rmSync).mockImplementationOnce(() => {
       throw new Error('busy');
     });
 

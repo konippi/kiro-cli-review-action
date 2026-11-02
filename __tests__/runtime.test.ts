@@ -46,7 +46,6 @@ const inputs = createActionInputs({
 });
 
 beforeEach(() => {
-  vi.clearAllMocks();
   process.env.RUNNER_TEMP = '/runner/temp';
   mocks.installKiroCli.mockResolvedValue('/bin/kiro');
   mocks.installGithubMcpServer.mockResolvedValue('/bin/github-mcp-server');

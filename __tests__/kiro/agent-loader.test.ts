@@ -1,31 +1,16 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import * as core from '@actions/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadAgent } from '../../src/kiro/agent-loader.js';
 import { writeBundledAgent, writeJson } from '../helpers/agent.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
-const temporaryDirectories: string[] = [];
-
-afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
-  vi.clearAllMocks();
-});
-
-function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'kiro-agent-loader-'));
-  temporaryDirectories.push(directory);
-  return directory;
-}
-
 describe('loadAgent', () => {
   it.each(['A_b-c'])('accepts agent name %s', (agent) => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
@@ -51,7 +36,7 @@ describe('loadAgent', () => {
     ['file:///absolute/prompt.md', undefined],
     ['Review carefully', undefined],
   ])('resolves a custom source prompt %s when loading', (prompt, relativeExpected) => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
@@ -103,7 +88,7 @@ describe('loadAgent', () => {
       expectedResources: [],
     },
   ])('$name', (testCase) => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
@@ -136,7 +121,7 @@ describe('loadAgent', () => {
   });
 
   it('requires custom agents, ignores model for them, and warns', () => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     const options = { workspace, actionPath, agent: 'custom', model: 'ignored' };
@@ -169,7 +154,7 @@ describe('loadAgent', () => {
     ['description', {}],
     ['model', []],
   ])('rejects invalid %s shape', (key, value) => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
@@ -184,7 +169,7 @@ describe('loadAgent', () => {
     ['{broken', 'Invalid JSON in agent configuration at'],
     ['[]', 'must be a JSON object'],
   ])('fails closed for malformed source %s', (content, message) => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
@@ -196,7 +181,7 @@ describe('loadAgent', () => {
   });
 
   it('reports an unreadable source path without exposing contents', () => {
-    const root = temporaryDirectory();
+    const root = createTemporaryDirectory();
     const workspace = join(root, 'workspace');
     const actionPath = join(root, 'action');
     writeBundledAgent(actionPath);
