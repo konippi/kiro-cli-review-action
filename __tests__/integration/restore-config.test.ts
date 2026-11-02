@@ -17,6 +17,7 @@ vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
 
 import { checkoutPullRequestHead } from '../../src/git.js';
 import { restoreConfigFromBase } from '../../src/restore-config.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync(
@@ -77,16 +78,14 @@ beforeAll(() => {
 
 beforeEach(() => {
   originalCwd = process.cwd();
-  testRoot = mkdtempSync(join(tmpdir(), 'kiro-v1-base-workspace-'));
+  testRoot = createTemporaryDirectory();
   workspace = join(testRoot, 'workspace');
   git(testRoot, 'clone', '-q', '--depth=1', '--branch=main', `file://${origin}`, workspace);
   process.chdir(workspace);
-  vi.clearAllMocks();
 });
 
 afterEach(() => {
   process.chdir(originalCwd);
-  rmSync(testRoot, { recursive: true, force: true });
 });
 
 afterAll(() => {

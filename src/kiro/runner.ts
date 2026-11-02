@@ -3,7 +3,7 @@ import { createInterface, type Interface } from 'node:readline';
 import * as core from '@actions/core';
 import { isPlainObject } from '../guards.js';
 
-/** Grace between SIGTERM and SIGKILL; covers Kiro's own MCP/telemetry teardown budget (~10 s). */
+/** Grace between SIGTERM and SIGKILL, covering Kiro's own MCP/telemetry teardown budget (~10 s). */
 export const SIGTERM_GRACE_MS = 15_000;
 
 const STDERR_TAIL_LIMIT = 8 * 1024;

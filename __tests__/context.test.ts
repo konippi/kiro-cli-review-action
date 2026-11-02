@@ -70,7 +70,6 @@ function setCommentPayload(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   setPullRequestPayload();
 });
 

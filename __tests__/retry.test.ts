@@ -1,14 +1,10 @@
 import * as core from '@actions/core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { withRetry } from '../src/retry.js';
 
 vi.mock('@actions/core', () => ({
   info: vi.fn(),
 }));
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe('withRetry', () => {
   it('returns after a successful retry', async () => {

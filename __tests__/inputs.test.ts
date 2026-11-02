@@ -20,7 +20,6 @@ function useInputs(values: Readonly<Record<string, string>> = {}): void {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   useInputs();
   getBooleanInput.mockReturnValue(false);
 });

@@ -12,7 +12,6 @@ const saveState = vi.mocked(core.saveState);
 const state = new Map<string, string>();
 
 beforeEach(() => {
-  vi.clearAllMocks();
   state.clear();
   getState.mockImplementation((name: string) => state.get(name) ?? '');
   saveState.mockImplementation((name: string, value: string) => {

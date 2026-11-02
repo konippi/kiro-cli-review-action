@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import * as core from '@actions/core';
 import { buildSync } from 'esbuild';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { concludeRun } from '../../src/kiro/conclusion.js';
 import { runKiro } from '../../src/kiro/runner.js';
 
@@ -31,10 +31,6 @@ beforeAll(() => {
     outfile: standalone,
     logLevel: 'silent',
   });
-});
-
-beforeEach(() => {
-  vi.clearAllMocks();
 });
 
 afterAll(() => {
@@ -304,40 +300,38 @@ describe('runKiro', () => {
       return { ...actual, spawn: vi.fn(() => child) };
     });
 
-    try {
-      vi.resetModules();
-      const { runKiro: runMockedKiro } = await import('../../src/kiro/runner.js');
-      const invocation = runMockedKiro({
-        kiroBinary: '/fake/kiro',
-        agentName: 'kiro-review-action',
-        prompt: 'prompt',
-        cwd: process.cwd(),
-        env: {},
-        timeoutMs: 1_000,
-        graceMs: 100,
-        debug: false,
-      });
-      const resolved = vi.fn();
-      invocation.then(resolved);
-
-      child.emit('close', 0, null);
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(resolved).not.toHaveBeenCalled();
-      expect(kill.mock.calls.some(([pid]) => pid === 4321)).toBe(false);
-
-      groupAlive = false;
-      await vi.advanceTimersByTimeAsync(100);
-
-      await expect(invocation).resolves.toMatchObject({ exitCode: 0, signal: null });
-      expect(resolved).toHaveBeenCalledOnce();
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      kill.mockRestore();
+    onTestFinished(() => {
       vi.doUnmock('node:child_process');
       vi.resetModules();
       vi.useRealTimers();
-    }
+    });
+    vi.resetModules();
+    const { runKiro: runMockedKiro } = await import('../../src/kiro/runner.js');
+    const invocation = runMockedKiro({
+      kiroBinary: '/fake/kiro',
+      agentName: 'kiro-review-action',
+      prompt: 'prompt',
+      cwd: process.cwd(),
+      env: {},
+      timeoutMs: 1_000,
+      graceMs: 100,
+      debug: false,
+    });
+    const resolved = vi.fn();
+    invocation.then(resolved);
+
+    child.emit('close', 0, null);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(resolved).not.toHaveBeenCalled();
+    expect(kill.mock.calls.some(([pid]) => pid === 4321)).toBe(false);
+
+    groupAlive = false;
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(invocation).resolves.toMatchObject({ exitCode: 0, signal: null });
+    expect(resolved).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('terminates the child before rejecting when onSpawn throws', async () => {
@@ -381,40 +375,38 @@ describe('runKiro', () => {
     });
     const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-    try {
-      vi.resetModules();
-      const { runKiro: runMockedKiro } = await import('../../src/kiro/runner.js');
-      const onSpawn = vi.fn();
-      const rejected = vi.fn();
-      const invocation = runMockedKiro({
-        kiroBinary: '/fake/kiro',
-        agentName: 'kiro-review-action',
-        prompt: 'prompt',
-        cwd: process.cwd(),
-        env: {},
-        timeoutMs: 1_000,
-        debug: false,
-        onSpawn,
-      });
-      invocation.catch(rejected);
-      const failure = new Error('child failed after spawn');
-
-      stdin.emit('error', new Error('stdin closed'));
-      child.emit('error', failure);
-      child.emit('close', 1, null);
-
-      await expect(invocation).rejects.toBe(failure);
-      expect(onSpawn).toHaveBeenCalledWith(4321);
-      expect(rejected).toHaveBeenCalledOnce();
-      expect(rejected).toHaveBeenCalledWith(failure);
-      expect(kill).not.toHaveBeenCalled();
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      kill.mockRestore();
+    onTestFinished(() => {
       vi.doUnmock('node:child_process');
       vi.resetModules();
       vi.useRealTimers();
-    }
+    });
+    vi.resetModules();
+    const { runKiro: runMockedKiro } = await import('../../src/kiro/runner.js');
+    const onSpawn = vi.fn();
+    const rejected = vi.fn();
+    const invocation = runMockedKiro({
+      kiroBinary: '/fake/kiro',
+      agentName: 'kiro-review-action',
+      prompt: 'prompt',
+      cwd: process.cwd(),
+      env: {},
+      timeoutMs: 1_000,
+      debug: false,
+      onSpawn,
+    });
+    invocation.catch(rejected);
+    const failure = new Error('child failed after spawn');
+
+    stdin.emit('error', new Error('stdin closed'));
+    child.emit('error', failure);
+    child.emit('close', 1, null);
+
+    await expect(invocation).rejects.toBe(failure);
+    expect(onSpawn).toHaveBeenCalledWith(4321);
+    expect(rejected).toHaveBeenCalledOnce();
+    expect(rejected).toHaveBeenCalledWith(failure);
+    expect(kill).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('rejects with the original spawn error', async () => {

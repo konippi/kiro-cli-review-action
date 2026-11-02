@@ -1,22 +1,18 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { buildPrompt } from '../src/prompt.js';
 import { createPullRequestTarget } from './helpers/context.js';
+import { createTemporaryDirectory } from './helpers/temporary-directory.js';
 
 const target = createPullRequestTarget({ owner: 'octo-org', repo: 'octo-repo' });
 
 let actionPath: string;
 
 beforeEach(() => {
-  actionPath = mkdtempSync(join(tmpdir(), 'kiro-prompt-'));
+  actionPath = createTemporaryDirectory();
   mkdirSync(join(actionPath, 'prompts'));
   writeFileSync(join(actionPath, 'prompts', 'review.md'), 'Bundled review instructions.');
-});
-
-afterEach(() => {
-  rmSync(actionPath, { recursive: true, force: true });
 });
 
 describe('prompt construction', () => {

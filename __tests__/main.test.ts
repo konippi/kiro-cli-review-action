@@ -67,7 +67,6 @@ async function runMain(): Promise<void> {
 
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
   mocks.calls.length = 0;
   mocks.parseEventContext.mockImplementation(() => {
     mocks.calls.push('parse-event');

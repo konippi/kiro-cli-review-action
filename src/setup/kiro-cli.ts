@@ -29,7 +29,6 @@ const KIRO_CLI_BASE_URL = 'https://prod.download.cli.kiro.dev/stable';
 type SupportedArchitecture = 'x64' | 'arm64';
 type LibcVariant = 'gnu' | 'musl';
 
-/** A glibc release version, compared on MAJOR.MINOR only. */
 interface GlibcVersion {
   readonly major: number;
   readonly minor: number;
@@ -71,13 +70,13 @@ const DEFAULT_KIRO_CLI_SHA256: Readonly<Record<KiroArtifactFilename, string>> = 
     '2b0811ecf7128c850a0d5396596badf2c85e6e8d307c0d3bcc8674798e11ac64',
 };
 
-// Kiro's glibc builds require at least these runtime versions; older hosts use the musl build.
+// Kiro's glibc builds require at least these runtime versions. Older hosts use the musl build.
 const MINIMUM_GLIBC: Readonly<Record<SupportedArchitecture, GlibcVersion>> = {
   x64: { major: 2, minor: 34 },
   arm64: { major: 2, minor: 39 },
 };
 
-// glibc reports MAJOR.MINOR; development builds append a third component that is ignored.
+// glibc reports MAJOR.MINOR. Development builds append a third component that is ignored.
 const GLIBC_VERSION = /^(?<major>\d+)\.(?<minor>\d+)/;
 const KIRO_CLI_VERSION_OUTPUT = /^kiro-cli (?<version>\d+\.\d+\.\d+)\s*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;

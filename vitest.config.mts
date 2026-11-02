@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['__tests__/**/*.test.ts'],
+    clearMocks: true,
+    restoreMocks: true,
+    unstubEnvs: true,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

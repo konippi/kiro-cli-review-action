@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 import * as core from '@actions/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALLOWED_ENV_KEYS } from '../../src/kiro/env.js';
 import type { ToolInstallSpec } from '../../src/setup/download.js';
+import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(),
@@ -19,18 +19,10 @@ vi.mock('../../src/setup/download.js', () => ({
 }));
 vi.mock('@actions/core', () => ({ info: vi.fn() }));
 
-const temporaryDirectories: string[] = [];
 const KIRO_VERSION = '2.27.1';
 const OTHER_KIRO_VERSION = '2.28.0';
 const KIRO_MUSL_SHA256 = 'cb032b322b61b58ef59f6540a50c66d3c7ab4db61dc65fd187325a7d618affe3';
 let resolvedSha256: string | undefined;
-
-function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'setup-kiro-'));
-  temporaryDirectories.push(directory);
-
-  return directory;
-}
 
 function writeBinary(path: string): void {
   mkdirSync(dirname(path), { recursive: true });
@@ -58,7 +50,6 @@ async function loadKiroCli(): Promise<typeof import('../../src/setup/kiro-cli.js
 
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
   resolvedSha256 = undefined;
   useRunner();
   mocks.execFileSync.mockReturnValue(`kiro-cli ${KIRO_VERSION}\n`);
@@ -67,14 +58,6 @@ beforeEach(() => {
 
     return '/tool-cache/kiro-cli';
   });
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-  for (const directory of temporaryDirectories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
 });
 
 describe('selectKiroArtifact', () => {
@@ -186,7 +169,7 @@ describe('installKiroCli', () => {
   ])('rejects staged version output %s before caching', async (output, actual) => {
     mocks.execFileSync.mockReturnValue(output);
     mocks.installTool.mockImplementation(async (spec) => {
-      const source = join(temporaryDirectory(), 'kirocli', 'bin');
+      const source = join(createTemporaryDirectory(), 'kirocli', 'bin');
       writeBinary(join(source, 'kiro-cli'));
       spec.verify(source);
 
@@ -205,7 +188,7 @@ describe('installKiroCli', () => {
       throw executionError;
     });
     mocks.installTool.mockImplementation(async (spec) => {
-      const source = join(temporaryDirectory(), 'kirocli', 'bin');
+      const source = join(createTemporaryDirectory(), 'kirocli', 'bin');
       const binary = join(source, 'kiro-cli');
       writeBinary(binary);
       spec.verify(source);
@@ -229,7 +212,7 @@ describe('installKiroCli', () => {
   });
 
   it('accepts the expected staged version', async () => {
-    const source = join(temporaryDirectory(), 'kirocli', 'bin');
+    const source = join(createTemporaryDirectory(), 'kirocli', 'bin');
     const binary = join(source, 'kiro-cli');
     writeBinary(binary);
     mocks.installTool.mockImplementation(async (spec) => {
