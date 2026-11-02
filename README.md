@@ -82,18 +82,16 @@ The action handles all event filtering internally. Non-matching events exit imme
 | Input | Required | Default | Description |
 | ----- | -------- | ------- | ----------- |
 | `kiro_api_key` | Yes | — | Kiro CLI API key ([Kiro Pro/Pro+/Power](https://kiro.dev) subscription required) |
-| `github_token` | No | `${{ github.token }}` | GitHub token for PR checkout, PR metadata, and the GitHub MCP server |
+| `github_token` | No | `${{ github.token }}` | GitHub token for PR checkout, PR metadata, and posting the review |
 | `agent` | No | `code-reviewer` | Agent name in `.kiro/agents/<name>.json` |
 | `model` | No | Kiro CLI default | Model ID for Kiro CLI (ignored when `agent` is specified) |
 | `timeout_minutes` | No | `10` | Kiro execution timeout in minutes (1–360); keep below the job's `timeout-minutes` |
 | `prompt` | No | — | Direct prompt to execute without PR context |
 | `trigger_phrase` | No | `@kiro` | Trigger phrase for comment-based review |
-| `max_diff_size` | No | `10000` | Diff size hint in characters for the reviewer (not enforced) |
 | `debug` | No | `false` | Log raw stream-json events and Kiro CLI stderr; may expose sensitive tool output |
-| `github_mcp_version` | No | `0.32.0` | github-mcp-server version to install |
 | `kiro_cli_version` | No | `2.27.1` | Kiro CLI version to install |
 
-`kiro_cli_version` must be at least `2.27.1` and `github_mcp_version` at least `0.23.0`; older releases lack behaviour this action requires.
+`kiro_cli_version` must be at least `2.27.1`; older releases lack behaviour this action requires.
 
 ## Environment variables
 
@@ -109,7 +107,7 @@ Kiro and its MCP servers receive only standard process variables such as `PATH` 
 
 | Output | Description |
 | ------ | ----------- |
-| `conclusion` | `success`, `skipped`, `timed_out`, `mcp_startup_failure`, `agent_not_loaded`, `run_error`, `incomplete`, or `setup_error` |
+| `conclusion` | `success`, `skipped`, `timed_out`, `mcp_startup_failure`, `agent_not_loaded`, `run_error`, `incomplete`, `publish_error`, or `setup_error` |
 
 The step fails for every conclusion except `success` and `skipped`. Use `steps.<id>.outcome` for success or failure and `steps.<id>.outputs.conclusion` for the reason:
 

@@ -6,8 +6,14 @@ import { buildAgentConfig, writeAgentConfig } from '../../src/kiro/agent.js';
 import { GENERATED_AGENT_NAME } from '../../src/kiro/agent-loader.js';
 import { writeBundledAgent, writeJson } from '../helpers/agent.js';
 import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
+import { connectReviewTools } from '../mcp/helpers.js';
 
 vi.mock('@actions/core', () => ({ info: vi.fn(), warning: vi.fn() }));
+
+const reviewServer = {
+  command: '/node',
+  args: ['/action/dist/mcp/index.cjs', '--directory', '/review'],
+};
 
 describe('buildAgentConfig', () => {
   it('deep copies returned nested source fields', () => {
@@ -17,14 +23,8 @@ describe('buildAgentConfig', () => {
       toolsSettings: { read: { maxFileSize: 1000 } },
       includeMcpJson: false,
     };
-    const built = buildAgentConfig(source, {
-      mcpServerBinary: '/safe/mcp',
-      model: '',
-    });
-    const builtWithoutResources = buildAgentConfig(
-      { mcpServers: { github: { command: 'unsafe' } } },
-      { mcpServerBinary: '/safe/mcp', model: '' },
-    );
+    const built = buildAgentConfig(source, { reviewServer, model: '' });
+    const builtWithoutResources = buildAgentConfig({}, { reviewServer, model: '' });
 
     expect(built.resources).not.toBe(source.resources);
     expect(builtWithoutResources.resources).toBeUndefined();
@@ -47,13 +47,13 @@ describe('buildAgentConfig', () => {
         unknown: { retained: false },
         mcpServers: {
           workspace: { command: 'node', args: ['scripts/workspace-server.js'] },
-          github: { command: 'unsafe' },
+          review: { command: 'unsafe' },
         },
         tools: ['@workspace'],
         allowedTools: ['@workspace/run'],
         toolsSettings: { read: { maxFileSize: 1000 } },
       },
-      { mcpServerBinary: '/safe/mcp', model: '' },
+      { reviewServer, model: '' },
     );
 
     expect(built).toEqual({
@@ -64,18 +64,10 @@ describe('buildAgentConfig', () => {
       model: 'source-model',
       mcpServers: {
         workspace: { command: 'node', args: ['scripts/workspace-server.js'] },
-        github: {
-          command: '/safe/mcp',
-          args: [
-            'stdio',
-            '--tools',
-            'pull_request_read,pull_request_review_write,add_comment_to_pending_review',
-          ],
-          env: { GITHUB_PERSONAL_ACCESS_TOKEN: `\${GITHUB_PERSONAL_ACCESS_TOKEN}` },
-        },
+        review: reviewServer,
       },
-      tools: ['read', 'grep', 'glob', '@github', '@workspace'],
-      allowedTools: ['@github', '@workspace/run'],
+      tools: ['read', 'grep', 'glob', '@review', '@workspace'],
+      allowedTools: ['@review', '@workspace/run'],
       toolsSettings: {
         read: { maxFileSize: 1000, allowedPaths: ['./**'] },
         grep: { allowedPaths: ['./**'] },
@@ -88,21 +80,31 @@ describe('buildAgentConfig', () => {
       'Review agent ignores agent fields: hooks, toolAliases, useLegacyMcpJson, includeMcpJson, unknown',
     );
     expect(core.warning).toHaveBeenCalledWith(
-      "Replacing the agent's github MCP server with the one managed by the action",
+      "Ignoring the agent's review MCP server because the action reserves that name",
     );
+  });
+
+  it('declares no review server when the action does not start one', () => {
+    const built = buildAgentConfig(
+      { mcpServers: { review: { command: 'unsafe' } }, tools: ['@review'] },
+      { reviewServer: null, model: '' },
+    );
+
+    expect(built.mcpServers).toEqual({});
+    expect(built.tools).toEqual(['read', 'grep', 'glob']);
   });
 
   it('preserves source agent resources', () => {
     const resources = ['file://CONTRIBUTING.md', 'file:///etc/passwd', 'file://~/.kiro/x'];
 
-    const built = buildAgentConfig({ resources }, { mcpServerBinary: '/mcp', model: '' });
+    const built = buildAgentConfig({ resources }, { reviewServer, model: '' });
 
     expect(built.resources).toEqual(resources);
   });
 });
 
 describe('writeAgentConfig', () => {
-  it('exposes every tool named by the bundled review prompt', () => {
+  it('exposes every tool named by the bundled review prompt', async () => {
     const root = createTemporaryDirectory();
     const kiroHome = join(root, 'kiro-home');
     const actionPath = process.cwd();
@@ -113,22 +115,20 @@ describe('writeAgentConfig', () => {
       kiroHome,
       agent: '',
       model: '',
-      mcpServerBinary: '/mcp',
+      reviewServer,
     });
 
     const generated = JSON.parse(
       readFileSync(join(kiroHome, 'agents', `${GENERATED_AGENT_NAME}.json`), 'utf8'),
     );
-    expect(generated.prompt).toBe(`file://${join(actionPath, 'agents', 'code-reviewer.md')}`);
 
     const prompt = readFileSync(join(actionPath, 'prompts', 'review.md'), 'utf8');
-    const namedTools = [
-      ...prompt.replace(/with method `[^`]+`/gu, '').matchAll(/`[a-z][a-z0-9_]*`/gu),
-    ].map((match) => match[0].slice(1, -1));
+    const namedTools = [...prompt.matchAll(/`[a-z][a-z0-9_]*`/gu)].map((match) =>
+      match[0].slice(1, -1),
+    );
     const builtIns = generated.tools.filter((tool: string) => !tool.startsWith('@'));
-    const githubArgs = generated.mcpServers.github.args;
-    const toolsArgument = githubArgs[githubArgs.indexOf('--tools') + 1];
-    const exposedTools = [...builtIns, ...toolsArgument.split(',')];
+    const { tools } = await (await connectReviewTools([])).client.listTools();
+    const exposedTools = [...builtIns, ...tools.map(({ name }) => name)];
 
     expect(exposedTools).toEqual(expect.arrayContaining(namedTools));
   });
@@ -148,7 +148,7 @@ describe('writeAgentConfig', () => {
       kiroHome,
       agent: '',
       model: 'chosen',
-      mcpServerBinary: '/mcp',
+      reviewServer,
     });
 
     expect(existsSync(join(workspace, '.kiro', 'agents', `${GENERATED_AGENT_NAME}.json`))).toBe(
@@ -186,7 +186,7 @@ describe('writeAgentConfig', () => {
       kiroHome,
       agent: '',
       model: '',
-      mcpServerBinary: '/mcp',
+      reviewServer,
     });
 
     expect(core.info).toHaveBeenCalledTimes(2);

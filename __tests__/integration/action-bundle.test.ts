@@ -33,8 +33,6 @@ function execute(scenario: string): {
   const kiroDirectories = ['gnu', 'musl'].map((variant) =>
     join(toolCache, 'kiro-cli', '2.27.1', `${process.arch}-${variant}`),
   );
-  const mcpDirectory = join(toolCache, 'github-mcp-server', '0.32.0', process.arch);
-  const mcp = join(mcpDirectory, 'github-mcp-server');
   const githubOutput = join(root, 'github-output');
   const githubState = join(root, 'github-state');
   const launcherScript =
@@ -54,12 +52,8 @@ function execute(scenario: string): {
     chmodSync(launcher, 0o755);
     chmodSync(chat, 0o755);
   }
-  mkdirSync(mcpDirectory, { recursive: true });
-  writeFileSync(mcp, '#!/bin/sh\nexit 0\n');
-  writeFileSync(`${mcpDirectory}.complete`, '');
   writeFileSync(githubOutput, '');
   writeFileSync(githubState, '');
-  chmodSync(mcp, 0o755);
 
   const platformShim =
     "Object.defineProperty(process, 'platform', { value: 'linux' }); require(process.argv[1]);";
@@ -80,7 +74,6 @@ function execute(scenario: string): {
       INPUT_PROMPT: 'hello',
       INPUT_DEBUG: 'false',
       INPUT_TIMEOUT_MINUTES: '1',
-      INPUT_GITHUB_MCP_VERSION: '0.32.0',
     },
   });
 

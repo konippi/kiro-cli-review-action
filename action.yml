@@ -9,7 +9,7 @@ inputs:
     description: 'Kiro CLI API key'
     required: true
   github_token:
-    description: 'GitHub token for PR checkout, PR metadata, and the GitHub MCP server'
+    description: 'GitHub token for PR checkout, PR metadata, and posting the review'
     required: false
     default: ${{ github.token }}
   agent:
@@ -27,22 +27,16 @@ inputs:
   trigger_phrase:
     description: 'Trigger phrase for comment-based review (e.g. @kiro or /review)'
     default: '@kiro'
-  max_diff_size:
-    description: 'Diff size hint in characters for the reviewer (not enforced)'
-    default: '10000'
   debug:
     description: 'Log raw stream-json events and Kiro CLI stderr; may expose sensitive tool output'
     default: 'false'
-  github_mcp_version:
-    description: 'github-mcp-server version to install'
-    default: '0.32.0'
   kiro_cli_version:
     description: 'Kiro CLI version to install'
     default: '2.27.1'
 
 outputs:
   conclusion:
-    description: 'Run conclusion: success, skipped, timed_out, mcp_startup_failure, agent_not_loaded, run_error, incomplete, or setup_error'
+    description: 'Run conclusion: success, skipped, timed_out, mcp_startup_failure, agent_not_loaded, run_error, incomplete, publish_error, or setup_error'
 
 runs:
   using: 'node24'

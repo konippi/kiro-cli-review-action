@@ -11,14 +11,8 @@ vi.mock('@actions/core', () => ({
   setSecret: vi.fn(),
 }));
 
-import {
-  DEFAULT_MAX_DIFF_SIZE,
-  DEFAULT_TIMEOUT_MINUTES,
-  DEFAULT_TRIGGER_PHRASE,
-  parseInputs,
-} from '../src/inputs.js';
+import { DEFAULT_TIMEOUT_MINUTES, DEFAULT_TRIGGER_PHRASE, parseInputs } from '../src/inputs.js';
 import { ALLOWED_ENV_KEYS } from '../src/kiro/env.js';
-import { DEFAULT_GITHUB_MCP_VERSION } from '../src/setup/github-mcp.js';
 import { DEFAULT_KIRO_CLI_VERSION } from '../src/setup/kiro-cli.js';
 
 const projectRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
@@ -33,8 +27,6 @@ describe('action.yml', () => {
       debug: { default: 'false' },
       timeout_minutes: { default: DEFAULT_TIMEOUT_MINUTES },
       trigger_phrase: { default: DEFAULT_TRIGGER_PHRASE },
-      max_diff_size: { default: DEFAULT_MAX_DIFF_SIZE },
-      github_mcp_version: { default: DEFAULT_GITHUB_MCP_VERSION },
       kiro_cli_version: { default: DEFAULT_KIRO_CLI_VERSION },
     });
   });

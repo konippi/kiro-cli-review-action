@@ -17,20 +17,19 @@ beforeEach(() => {
 
 describe('prompt construction', () => {
   it('passes direct prompt mode through unchanged', () => {
-    expect(
-      buildPrompt({ kind: 'prompt', prompt: 'Review only the parser.' }, actionPath, 123),
-    ).toBe('Review only the parser.');
+    expect(buildPrompt({ kind: 'prompt', prompt: 'Review only the parser.' }, actionPath)).toBe(
+      'Review only the parser.',
+    );
   });
 
   it('builds the exact pull request prompt from the bundled review instructions', () => {
-    const prompt = buildPrompt({ kind: 'pull_request', target }, actionPath, 12_345);
+    const prompt = buildPrompt({ kind: 'pull_request', target }, actionPath);
 
     expect(prompt).toBe(
       [
         'Bundled review instructions.',
         '',
         'Review pull request #42 in octo-org/octo-repo.',
-        'Keep the diff you fetch within about 12345 characters.',
         'Files this PR changed under .kiro, .amazonq, AGENTS.md, README.md, AmazonQ.md, CONTRIBUTING.md were restored from the base branch; the PR versions are available under .kiro-pr/ for inspection.',
       ].join('\n'),
     );
@@ -40,7 +39,6 @@ describe('prompt construction', () => {
     const prompt = buildPrompt(
       { kind: 'comment', target, userRequest: 'Check the retry behavior.' },
       actionPath,
-      100,
     );
 
     expect(prompt).toBe(
@@ -48,7 +46,6 @@ describe('prompt construction', () => {
         'Bundled review instructions.',
         '',
         'Review pull request #42 in octo-org/octo-repo.',
-        'Keep the diff you fetch within about 100 characters.',
         'Files this PR changed under .kiro, .amazonq, AGENTS.md, README.md, AmazonQ.md, CONTRIBUTING.md were restored from the base branch; the PR versions are available under .kiro-pr/ for inspection.',
         '',
         '<user_request>',
@@ -60,7 +57,7 @@ describe('prompt construction', () => {
   });
 
   it('does not append a user request block when comment mode has no request', () => {
-    const prompt = buildPrompt({ kind: 'comment', target, userRequest: null }, actionPath, 100);
+    const prompt = buildPrompt({ kind: 'comment', target, userRequest: null }, actionPath);
 
     expect(prompt).not.toContain('<user_request>');
   });

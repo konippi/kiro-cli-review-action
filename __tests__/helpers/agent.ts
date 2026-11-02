@@ -13,8 +13,8 @@ export function writeBundledAgent(actionPath: string, extra: Record<string, unkn
     name: 'code-reviewer',
     description: 'bundled',
     prompt: 'file://./code-reviewer.md',
-    tools: ['read', 'grep', 'glob', '@github'],
-    allowedTools: ['@github'],
+    tools: ['read', 'grep', 'glob', '@review'],
+    allowedTools: ['@review'],
     resources: ['file://CONTRIBUTING.md'],
     ...extra,
   });
