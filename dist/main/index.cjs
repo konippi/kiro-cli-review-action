@@ -4090,11 +4090,11 @@ var require_util2 = __commonJS({
     var { isUint8Array } = require("node:util/types");
     var { webidl } = require_webidl();
     var supportedHashes = [];
-    var crypto3;
+    var crypto4;
     try {
-      crypto3 = require("node:crypto");
+      crypto4 = require("node:crypto");
       const possibleRelevantHashes = ["sha256", "sha384", "sha512"];
-      supportedHashes = crypto3.getHashes().filter((hash) => possibleRelevantHashes.includes(hash));
+      supportedHashes = crypto4.getHashes().filter((hash) => possibleRelevantHashes.includes(hash));
     } catch {
     }
     function responseURL(response) {
@@ -4367,7 +4367,7 @@ var require_util2 = __commonJS({
       }
     }
     function bytesMatch(bytes, metadataList) {
-      if (crypto3 === void 0) {
+      if (crypto4 === void 0) {
         return true;
       }
       const parsedMetadata = parseMetadata(metadataList);
@@ -4382,7 +4382,7 @@ var require_util2 = __commonJS({
       for (const item of metadata) {
         const algorithm = item.algo;
         const expectedValue = item.hash;
-        let actualValue = crypto3.createHash(algorithm).update(bytes).digest("base64");
+        let actualValue = crypto4.createHash(algorithm).update(bytes).digest("base64");
         if (actualValue[actualValue.length - 1] === "=") {
           if (actualValue[actualValue.length - 2] === "=") {
             actualValue = actualValue.slice(0, -2);
@@ -5446,8 +5446,8 @@ var require_body = __commonJS({
     var { multipartFormDataParser } = require_formdata_parser();
     var random;
     try {
-      const crypto3 = require("node:crypto");
-      random = (max) => crypto3.randomInt(0, max);
+      const crypto4 = require("node:crypto");
+      random = (max) => crypto4.randomInt(0, max);
     } catch {
       random = (max) => Math.floor(Math.random(max));
     }
@@ -16856,13 +16856,13 @@ var require_frame = __commonJS({
     "use strict";
     var { maxUnsigned16Bit } = require_constants5();
     var BUFFER_SIZE = 16386;
-    var crypto3;
+    var crypto4;
     var buffer = null;
     var bufIdx = BUFFER_SIZE;
     try {
-      crypto3 = require("node:crypto");
+      crypto4 = require("node:crypto");
     } catch {
-      crypto3 = {
+      crypto4 = {
         // not full compatibility, but minimum.
         randomFillSync: function randomFillSync(buffer2, _offset, _size) {
           for (let i = 0; i < buffer2.length; ++i) {
@@ -16875,7 +16875,7 @@ var require_frame = __commonJS({
     function generateMask() {
       if (bufIdx === BUFFER_SIZE) {
         bufIdx = 0;
-        crypto3.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
+        crypto4.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
       }
       return [buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++]];
     }
@@ -16947,9 +16947,9 @@ var require_connection = __commonJS({
     var { Headers: Headers2, getHeadersList } = require_headers();
     var { getDecodeSplit } = require_util2();
     var { WebsocketFrameSend } = require_frame();
-    var crypto3;
+    var crypto4;
     try {
-      crypto3 = require("node:crypto");
+      crypto4 = require("node:crypto");
     } catch {
     }
     function establishWebSocketConnection(url, protocols, client, ws, onEstablish, options) {
@@ -16969,7 +16969,7 @@ var require_connection = __commonJS({
         const headersList = getHeadersList(new Headers2(options.headers));
         request2.headersList = headersList;
       }
-      const keyValue = crypto3.randomBytes(16).toString("base64");
+      const keyValue = crypto4.randomBytes(16).toString("base64");
       request2.headersList.append("sec-websocket-key", keyValue);
       request2.headersList.append("sec-websocket-version", "13");
       for (const protocol of protocols) {
@@ -16999,7 +16999,7 @@ var require_connection = __commonJS({
             return;
           }
           const secWSAccept = response.headersList.get("Sec-WebSocket-Accept");
-          const digest = crypto3.createHash("sha1").update(keyValue + uid).digest("base64");
+          const digest = crypto4.createHash("sha1").update(keyValue + uid).digest("base64");
           if (secWSAccept !== digest) {
             failWebsocketConnection(ws, "Incorrect hash received in Sec-WebSocket-Accept header.");
             return;
@@ -25395,7 +25395,7 @@ function escapeProperty(s) {
 }
 
 // node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/file-command.js
-var crypto = __toESM(require("crypto"), 1);
+var crypto2 = __toESM(require("crypto"), 1);
 var fs = __toESM(require("fs"), 1);
 var os2 = __toESM(require("os"), 1);
 function issueFileCommand(command, message) {
@@ -25411,7 +25411,7 @@ function issueFileCommand(command, message) {
   });
 }
 function prepareKeyValueMessage(key, value) {
-  const delimiter3 = `ghadelimiter_${crypto.randomUUID()}`;
+  const delimiter3 = `ghadelimiter_${crypto2.randomUUID()}`;
   const convertedValue = toCommandValue(value);
   if (key.includes(delimiter3)) {
     throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter3}"`);
@@ -27327,7 +27327,7 @@ var import_node_path = require("node:path");
 var import_promises2 = require("node:stream/promises");
 
 // node_modules/.pnpm/@actions+tool-cache@4.0.0/node_modules/@actions/tool-cache/lib/tool-cache.js
-var crypto2 = __toESM(require("crypto"), 1);
+var crypto3 = __toESM(require("crypto"), 1);
 var fs3 = __toESM(require("fs"), 1);
 
 // node_modules/.pnpm/@actions+tool-cache@4.0.0/node_modules/@actions/tool-cache/lib/manifest.js
@@ -27451,7 +27451,7 @@ var IS_MAC = process.platform === "darwin";
 var userAgent2 = "actions/tool-cache";
 function downloadTool(url, dest, auth2, headers) {
   return __awaiter9(this, void 0, void 0, function* () {
-    dest = dest || path4.join(_getTempDirectory(), crypto2.randomUUID());
+    dest = dest || path4.join(_getTempDirectory(), crypto3.randomUUID());
     yield mkdirP(path4.dirname(dest));
     debug(`Downloading ${url}`);
     debug(`Destination ${dest}`);
@@ -27621,7 +27621,7 @@ function findAllVersions(toolName, arch3) {
 function _createExtractFolder(dest) {
   return __awaiter9(this, void 0, void 0, function* () {
     if (!dest) {
-      dest = path4.join(_getTempDirectory(), crypto2.randomUUID());
+      dest = path4.join(_getTempDirectory(), crypto3.randomUUID());
     }
     yield mkdirP(dest);
     return dest;
@@ -28509,12 +28509,16 @@ var import_node_path8 = require("node:path");
 // src/fs.ts
 var import_node_fs4 = require("node:fs");
 var import_node_path6 = require("node:path");
-function writeJsonFile(path5, value) {
+function serializeJson(path5, value) {
   const json = JSON.stringify(value, null, 2);
   if (json === void 0) throw new TypeError(`Cannot serialize ${path5} as JSON`);
+  return `${json}
+`;
+}
+function writeJsonFile(path5, value) {
+  const json = serializeJson(path5, value);
   (0, import_node_fs4.mkdirSync)((0, import_node_path6.dirname)(path5), { recursive: true });
-  (0, import_node_fs4.writeFileSync)(path5, `${json}
-`, { mode: 384 });
+  (0, import_node_fs4.writeFileSync)(path5, json, { mode: 384 });
   (0, import_node_fs4.chmodSync)(path5, 384);
 }
 

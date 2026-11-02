@@ -1,0 +1,36 @@
+{
+  "name": "submit_review",
+  "title": "Submit review",
+  "description": "Ends the review: saves the summary and the selected findings, discards the rest, and posts it after the session. Call it once, last, even with no findings.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "finding_ids": {
+        "maxItems": 10,
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Unique finding_ids to publish, most important first. May be empty."
+      },
+      "summary": {
+        "type": "string",
+        "maxLength": 8000,
+        "pattern": "\\S",
+        "description": "Markdown review body: overall assessment plus issues that cannot be anchored to a diff line."
+      }
+    },
+    "required": [
+      "finding_ids",
+      "summary"
+    ],
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}

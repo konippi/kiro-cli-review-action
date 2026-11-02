@@ -2,27 +2,19 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
+  readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { writeJsonFile } from '../src/fs.js';
-
-let temporaryDirectory = '';
-
-afterEach(() => {
-  rmSync(temporaryDirectory, { recursive: true, force: true });
-});
+import { describe, expect, it } from 'vitest';
+import { readJsonFile, writeJsonFile, writeJsonFileAtomic } from '../src/fs.js';
+import { createTemporaryDirectory } from './helpers/temporary-directory.js';
 
 describe('writeJsonFile', () => {
   it('writes pretty JSON with a trailing newline and mode 0600', () => {
-    temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
-    const path = join(temporaryDirectory, 'nested', 'value.json');
+    const path = join(createTemporaryDirectory(), 'nested', 'value.json');
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{"stale":true}');
     chmodSync(path, 0o644);
@@ -34,12 +26,34 @@ describe('writeJsonFile', () => {
   });
 
   it('rejects undefined without creating a file', () => {
-    temporaryDirectory = mkdtempSync(join(tmpdir(), 'kiro-json-'));
-    const path = join(temporaryDirectory, 'nested', 'value.json');
+    const path = join(createTemporaryDirectory(), 'nested', 'value.json');
 
     expect(() => writeJsonFile(path, undefined)).toThrow(
       new TypeError(`Cannot serialize ${path} as JSON`),
     );
     expect(existsSync(path)).toBe(false);
+  });
+});
+
+describe('writeJsonFileAtomic', () => {
+  it('replaces the file with private JSON and leaves no temporary file', () => {
+    const directory = createTemporaryDirectory();
+    const path = join(directory, 'value.json');
+    writeFileSync(path, '{"stale":true}');
+
+    writeJsonFileAtomic(path, { enabled: true });
+
+    expect(readJsonFile(path)).toEqual({ enabled: true });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(readdirSync(directory)).toEqual(['value.json']);
+  });
+});
+
+describe('readJsonFile', () => {
+  it('rejects invalid JSON with its path', () => {
+    const path = join(createTemporaryDirectory(), 'value.json');
+    writeFileSync(path, '{bad');
+
+    expect(() => readJsonFile(path)).toThrow(`Invalid JSON in ${path}`);
   });
 });
