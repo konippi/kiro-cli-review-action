@@ -7,3 +7,13 @@ export function isErrnoException(error: unknown): error is NodeJS.ErrnoException
 export function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** Fields of an Octokit request error that this action reads. */
+export interface HttpError extends Error {
+  readonly status: number;
+}
+
+/** Narrows a caught value to an Octokit request error carrying a numeric HTTP status. */
+export function isHttpError(error: unknown): error is HttpError {
+  return error instanceof Error && 'status' in error && typeof error.status === 'number';
+}

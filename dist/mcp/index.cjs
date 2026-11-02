@@ -21692,6 +21692,7 @@ var package_default = {
     "@actions/github": "9.1.1",
     "@actions/tool-cache": "4.0.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "@octokit/plugin-throttling": "11.0.5",
     semver: "7.8.5",
     zod: "4.6.7"
   },
@@ -21838,6 +21839,19 @@ var REVIEW_LIMITS = {
   findingBody: 4e3,
   summaryBody: 8e3
 };
+var ReviewProposalSchema = strictObject({
+  summary: string2().max(REVIEW_LIMITS.summaryBody),
+  findings: array(
+    strictObject({
+      id: string2(),
+      path: string2().min(1),
+      side: _enum(["RIGHT", "LEFT"]),
+      line: number2().int().min(1),
+      startLine: number2().int().min(1).exactOptional(),
+      body: string2().max(REVIEW_LIMITS.findingBody)
+    })
+  ).max(REVIEW_LIMITS.publishedFindings)
+});
 var FINALIZED = { ok: false, code: "FINALIZED" };
 function sameFinding(left, right) {
   return left.path === right.path && left.side === right.side && left.line === right.line && left.startLine === right.startLine && left.body === right.body;

@@ -1,19 +1,9 @@
 import * as core from '@actions/core';
 import { getOctokit } from '@actions/github';
 import { detectFork, type PullRequestTarget } from './context.js';
-import { toErrorMessage } from './errors.js';
+import { isHttpError, toErrorMessage } from './errors.js';
 
 const WRITE_PERMISSIONS = new Set(['admin', 'write']);
-
-function isNotFoundError(error: unknown): error is { status: number } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    typeof error.status === 'number' &&
-    error.status === 404
-  );
-}
 
 /** Reacts to the triggering comment, logging failures without failing the review. */
 export async function acknowledgeComment(
@@ -55,7 +45,7 @@ export async function authorizeCommentTrigger(
     });
     permission = response.data.permission;
   } catch (error: unknown) {
-    if (isNotFoundError(error)) {
+    if (isHttpError(error) && error.status === 404) {
       throw new Error(
         `Commenter ${username} is not a collaborator on ${owner}/${repo}; write access is required`,
       );

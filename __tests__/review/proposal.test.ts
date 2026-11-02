@@ -1,7 +1,11 @@
-import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createReviewRecorder, REVIEW_LIMITS } from '../../src/review/proposal.js';
+import {
+  createReviewRecorder,
+  REVIEW_LIMITS,
+  readReviewProposal,
+} from '../../src/review/proposal.js';
 import { createTemporaryDirectory } from '../helpers/temporary-directory.js';
 
 const finding = { path: 'a.ts', side: 'RIGHT', line: 1, body: 'Issue' } as const;
@@ -50,7 +54,7 @@ describe('createReviewRecorder', () => {
     recorder.record({ ...finding, line: 2 });
 
     expect(recorder.submit(['f2', 'f1'], 'Summary')).toEqual({ ok: true });
-    expect(JSON.parse(readFileSync(proposalPath, 'utf8'))).toEqual({
+    expect(readReviewProposal(proposalPath)).toEqual({
       summary: 'Summary',
       findings: [
         { id: 'f2', ...finding, line: 2 },
@@ -78,5 +82,23 @@ describe('createReviewRecorder', () => {
 
     rmSync(proposalPath, { recursive: true });
     expect(recorder.submit([], 'Summary')).toEqual({ ok: true });
+  });
+});
+
+describe('readReviewProposal', () => {
+  it('rejects a proposal that does not match the schema with its path and the failing field', () => {
+    const path = join(createTemporaryDirectory(), 'proposal.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ summary: 'Summary', findings: [{ id: 'f1', ...finding, side: 'BOTH' }] }),
+    );
+
+    expect(() => readReviewProposal(path)).toThrow(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          new RegExp(`^Invalid review proposal in ${path}\\n.*findings\\[0\\]\\.side`, 's'),
+        ),
+      }),
+    );
   });
 });

@@ -1,5 +1,4 @@
 const MAX_LINE_LENGTH = 2_000;
-
 const PAGE_SIZE = 30_000;
 
 /** Hunk header and lines to lay out on diff pages. */

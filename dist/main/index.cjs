@@ -25322,6 +25322,9 @@ function isErrnoException(error2) {
 function toErrorMessage2(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
 }
+function isHttpError(error2) {
+  return error2 instanceof Error && "status" in error2 && typeof error2.status === "number";
+}
 
 // node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/command.js
 var os = __toESM(require("os"), 1);
@@ -28394,9 +28397,6 @@ async function prepareWorkspace(target, githubToken) {
 
 // src/github.ts
 var WRITE_PERMISSIONS = /* @__PURE__ */ new Set(["admin", "write"]);
-function isNotFoundError(error2) {
-  return typeof error2 === "object" && error2 !== null && "status" in error2 && typeof error2.status === "number" && error2.status === 404;
-}
 async function acknowledgeComment(owner, repo, commentId, token) {
   try {
     const octokit = getOctokit(token);
@@ -28423,7 +28423,7 @@ async function authorizeCommentTrigger(owner, repo, username, token) {
     });
     permission = response.data.permission;
   } catch (error2) {
-    if (isNotFoundError(error2)) {
+    if (isHttpError(error2) && error2.status === 404) {
       throw new Error(
         `Commenter ${username} is not a collaborator on ${owner}/${repo}; write access is required`
       );
